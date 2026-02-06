@@ -366,7 +366,7 @@ class EnvironmentManager:
         for key, value in self._env_vars.items():
             if pattern.lower() in key.lower():
                 results[key] = value
-            elif search_value and pattern.lower() in value.lower():
+            elif search_value and pattern.lower() in str(value).lower():
                 results[key] = value
 
         if not results:

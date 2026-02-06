@@ -1,0 +1,11 @@
+# Core dependencies
+# None - EVM uses only Python standard library
+
+# Development dependencies (optional)
+# Uncomment for development/testing:
+
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
+# black>=23.0.0
+# flake8>=6.0.0
+# mypy>=1.0.0

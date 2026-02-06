@@ -14,7 +14,7 @@ setup(
     description="A command-line tool for managing environment variables",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/example/evm",
+    url="https://github.com/zxygithub/evm",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

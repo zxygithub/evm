@@ -699,8 +699,8 @@ def main():
         print(f"License: MIT")
         print(f"Python: {sys.version.split()[0]}")
         print(f"Storage: {Path.home() / '.evm' / 'env.json'}")
-        print(f"\nRepository: https://github.com/example/evm")
-        print(f"Documentation: https://github.com/example/evm/blob/main/README.md")
+        print(f"\nRepository: https://github.com/zxygithub/evm")
+        print(f"Documentation: https://github.com/zxygithub/evm/blob/main/README.md")
         return
 
     if not args.command:

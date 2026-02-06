@@ -24,7 +24,7 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 
 ```bash
 # Clone the repository
-git clone https://github.com/example/evm.git
+git clone https://github.com/zxygithub/evm.git
 cd evm
 
 # Install in development mode

@@ -38,8 +38,8 @@ License: MIT
 Python: 3.12.9
 Storage: /Users/zhuangxiaoyi/.evm/env.json
 
-Repository: https://github.com/example/evm
-Documentation: https://github.com/example/evm/blob/main/README.md
+Repository: https://github.com/zxygithub/evm
+Documentation: https://github.com/zxygithub/evm/blob/main/README.md
 ```
 
 ### 2. 嵌套JSON导入支持 ✅

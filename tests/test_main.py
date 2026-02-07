@@ -6,13 +6,14 @@ import sys
 import json
 import tempfile
 import unittest
+import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from evm.python.main import EnvironmentManager
+from evm.python.main import EnvironmentManager  # noqa: E402
 
 
 class TestEnvironmentManager(unittest.TestCase):
@@ -26,7 +27,6 @@ class TestEnvironmentManager(unittest.TestCase):
 
     def tearDown(self):
         """Clean up test fixtures."""
-        import shutil
         shutil.rmtree(self.temp_dir)
 
     def test_init_creates_directory(self):
@@ -81,7 +81,7 @@ class TestEnvironmentManager(unittest.TestCase):
 
         # Pattern filtering should work
         filtered = {k: v for k, v in self.manager._env_vars.items()
-                   if 'api'.lower() in k.lower()}
+                    if 'api'.lower() in k.lower()}
         self.assertEqual(len(filtered), 2)
 
     def test_clear_variables(self):
@@ -117,7 +117,7 @@ class TestEnvironmentManager(unittest.TestCase):
         self.assertTrue(os.path.exists(export_file))
         with open(export_file, 'r') as f:
             content = f.read()
-        self.assertIn('KEY1="value1"', content)
+        self.assertIn('KEY1=value1', content)
 
     def test_export_sh(self):
         """Test exporting to shell script format."""
@@ -130,7 +130,7 @@ class TestEnvironmentManager(unittest.TestCase):
         with open(export_file, 'r') as f:
             content = f.read()
         self.assertIn('#!/bin/bash', content)
-        self.assertIn('export KEY1="value1"', content)
+        self.assertIn('export KEY1=value1', content)
 
     def test_load_json(self):
         """Test loading from JSON file."""
@@ -258,7 +258,9 @@ class TestEnvironmentManager(unittest.TestCase):
         """Test setting a variable in a group."""
         self.manager.set_grouped('dev', 'DATABASE_URL', 'localhost')
         self.assertIn('dev:DATABASE_URL', self.manager._env_vars)
-        self.assertEqual(self.manager._env_vars['dev:DATABASE_URL'], 'localhost')
+        self.assertEqual(
+            self.manager._env_vars['dev:DATABASE_URL'], 'localhost'
+        )
 
     def test_get_grouped_variable(self):
         """Test getting a variable from a group."""
@@ -294,7 +296,7 @@ class TestEnvironmentManager(unittest.TestCase):
 
         # Should have 2 dev variables
         dev_vars = {k: v for k, v in self.manager._env_vars.items()
-                   if k.startswith('dev:')}
+                    if k.startswith('dev:')}
         self.assertEqual(len(dev_vars), 2)
 
     def test_list_with_show_groups(self):

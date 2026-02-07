@@ -220,26 +220,6 @@ rm tests/test_case/imported.env
 - 避免特殊字符（除了下划线）
 - 遵循常见的环境变量命名约定
 
-## 格式问题说明
-
-### test_group_config.json 格式问题
-
-**注意：** `test_group_config.json` 文件包含嵌套的JSON对象，EVM无法正确处理。
-
-**问题：**
-- 文件包含微信小程序的完整配置（嵌套对象）
-- 包含敏感的生产数据库信息
-- 格式不符合EVM要求的简单键值对
-
-**推荐方案：**
-1. 使用 `test_group_config_correct.json` - 正确格式的示例
-2. 参考 `FORMAT_ISSUE.md` 了解详细说明
-
-**正确格式示例：**
-```bash
-evm load tests/test_case/test_group_config_correct.json --group dev
-```
-
 ## 重要提示
 
 ### EVM支持的文件格式
@@ -274,10 +254,9 @@ EVM只支持以下格式：
 **推荐使用：**
 - `test_config.json` - 标准JSON配置
 - `test_config.env` - 标准.env配置
-- `test_env.json` - 测试环境配置（已修正）
+- `test_env.json` - 测试环境配置
 - `dev_config.json` - 开发环境配置
 - `prod_config.json` - 生产环境配置
-- `test_group_config_correct.json` - 分组配置（正确格式）
+- `group_config_example.json` - 分组配置示例
 
-**避免使用：**
-- `test_group_config.json` - 包含嵌套对象，格式不正确
+**注意：** EVM不支持嵌套JSON对象，请使用简单的键值对格式。

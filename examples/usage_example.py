@@ -6,6 +6,7 @@
 from evm.python.main import EnvironmentManager
 import os
 
+
 def main():
     """演示 EVM 在 Python 代码中的用法。"""
 
@@ -142,6 +143,7 @@ def main():
     print()
 
     print("=== 演示完成 ===")
+
 
 if __name__ == '__main__':
     # 创建输出目录

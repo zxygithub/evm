@@ -1,88 +1,87 @@
 # EVM - Environment Variable Manager
 
-A powerful command-line tool for managing environment variables on macOS and Linux systems.
+A powerful cross-platform command-line tool for managing environment variables. Supports macOS, Linux, and Windows.
 
 **Version**: 1.5.0
 
 ## Features
 
-- ✅ **Set**: Add or update environment variables
-- ✅ **Get**: Retrieve environment variable values
-- ✅ **Delete**: Remove environment variables
-- ✅ **List**: List all or filtered environment variables
-- ✅ **Clear**: Clear all environment variables
-- ✅ **Export**: Export to JSON, .env, or shell script formats
-- ✅ **Import**: Import from JSON, .env, or backup files
-- ✅ **Execute**: Run commands with custom environment variables
-- ✅ **Rename**: Rename environment variables
-- ✅ **Copy**: Copy environment variables
-- ✅ **Search**: Search environment variables by key or value
-- ✅ **Backup**: Create backups with timestamps
-- ✅ **Restore**: Restore from backups (replace or merge)
-- ✅ **Groups**: Manage environment variables by namespace/groups
+- ✅ **Set/Get/Delete**: Manage environment variables
+- ✅ **List/Search**: View and find variables easily
+- ✅ **Import/Export**: JSON, .env, and shell script formats
+- ✅ **Backup/Restore**: Timestamps and merge support
+- ✅ **Groups**: Namespace-based organization
+- ✅ **Execute**: Run commands with custom environment
+- ✅ **Cross-Platform**: Native support for macOS, Linux, Windows
 
 ## Project Structure
 
-This project provides two implementations:
-
 ```
 evm/
-├── bin/                      # Compiled binaries
-│   ├── evm                   # C implementation (69KB)
-│   └── evm-cli-macos.tar.gz  # macOS distribution package
+├── bin/                      # Pre-built binaries
+│   ├── evm                   # macOS/Linux executable
+│   ├── evm.exe              # Windows executable
+│   ├── evm-cli-macos.tar.gz # macOS distribution
+│   └── evm-cli-windows.zip  # Windows distribution
 ├── evm/
-│   ├── c/                    # C implementation source
-│   │   ├── main.c
-│   │   ├── core.c
+│   ├── c/                    # C implementation
+│   │   ├── main.c, main_win.c
+│   │   ├── core.c, io.c, list.c, group.c
+│   │   ├── utils.c, utils_win.c
+│   │   ├── evm.h, evm_win.h
+│   │   ├── Makefile, Makefile.win
 │   │   └── ...
-│   └── python/               # Python implementation source
+│   └── python/               # Python implementation
 │       ├── main.py
-│       └── ...
+│       ├── __init__.py
+│       └── __main__.py
 ├── examples/                 # Example scripts
 ├── tests/                    # Test suite
+├── docs/
+│   └── CHANGELOG.md
 ├── README.md                 # This file
+├── LICENSE                   # MIT License
 ├── Makefile                  # Build automation
-└── setup.py                  # Python package setup
+├── setup.py                  # Python package setup
+└── requirements.txt          # Python dependencies
 ```
 
 ## Quick Start
 
-### Option 1: Use Pre-built Binary (Recommended for macOS)
+### Option 1: Pre-built Binaries (Recommended)
 
+**macOS/Linux:**
 ```bash
-# Download from bin/ directory or releases page
 cp bin/evm /usr/local/bin/
 chmod +x /usr/local/bin/evm
-
-# Verify installation
 evm --version
-evm --help
 ```
 
-### Option 2: Build from C Source
+**Windows:**
+```cmd
+# Extract bin/evm-cli-windows.zip
+copy evm.exe C:\Windows\System32\
+evm --version
+```
 
+### Option 2: Build from Source
+
+**C Version (All Platforms):**
 ```bash
-# Clone repository
-git clone https://github.com/zxygithub/evm.git
-cd evm
-
-# Build C implementation
+# macOS/Linux
 cd evm/c
 make
-make install  # Copies to ../../bin/
+sudo make install-local  # Install to /usr/local/bin
 
-# Or install system-wide
-sudo make install-local  # Installs to /usr/local/bin/
+# Windows (Cross-compile from macOS/Linux)
+cd evm/c
+make -f Makefile.win
+# Output: evm.exe
 ```
 
-### Option 3: Install Python Version
-
+**Python Version:**
 ```bash
-# Install from source
 pip install -e .
-
-# Or for development
-pip install -e ".[dev]"
 ```
 
 ## Usage
@@ -91,7 +90,8 @@ pip install -e ".[dev]"
 
 ```bash
 # Set a variable
-evm set API_KEY abc123
+evm set API_KEY your_secret_key
+evm set DATABASE_URL "postgresql://localhost/mydb"
 
 # Get a variable
 evm get API_KEY
@@ -102,16 +102,16 @@ evm list
 # Delete a variable
 evm delete API_KEY
 
-# Clear all variables
+# Clear all
 evm clear
 ```
 
 ### Group Management
 
 ```bash
-# Set variable in a group
-evm setg dev DATABASE_URL "localhost:5432"
-evm setg prod DATABASE_URL "prod.example.com:5432"
+# Set variables in groups
+evm setg dev API_URL http://localhost:3000
+evm setg prod API_URL https://api.example.com
 
 # List variables in a group
 evm listg dev
@@ -119,8 +119,14 @@ evm listg dev
 # List all groups
 evm groups
 
-# Show all variables grouped by namespace
+# Show variables grouped by namespace
 evm list --show-groups
+
+# Move variable to group
+evm move-group API_KEY prod
+
+# Delete entire group
+evm delete-group test
 ```
 
 ### Import/Export
@@ -146,10 +152,10 @@ evm load config.json --group dev  # Add to group
 # Create backup (auto-timestamped)
 evm backup
 
-# Create backup to specific file
+# Backup to specific file
 evm backup --file mybackup.json
 
-# Restore from backup
+# Restore
 evm restore backup.json
 evm restore backup.json --merge   # Merge with existing
 ```
@@ -157,70 +163,82 @@ evm restore backup.json --merge   # Merge with existing
 ### Execute Commands
 
 ```bash
-# Run command with environment variables
+# Run with environment variables
 evm exec -- python script.py
 evm exec -- npm start
 ```
 
+### Search
+
+```bash
+# Search by key
+evm search api
+
+# Search by key and value
+evm search localhost --value
+```
+
+## Storage
+
+Environment variables are stored as JSON:
+
+- **macOS/Linux**: `~/.evm/env.json`
+- **Windows**: `%USERPROFILE%\.evm\env.json`
+
+Example storage format:
+```json
+{
+  "API_KEY": "secret123",
+  "dev:DATABASE_URL": "localhost:5432",
+  "prod:DATABASE_URL": "prod.example.com:5432"
+}
+```
+
+Use custom storage:
+```bash
+evm --env-file /path/to/custom.json list
+```
+
 ## Development
 
-### Building C Version
+### Building
 
+**C Version:**
 ```bash
 cd evm/c
 
-# Build
+# Native build (macOS/Linux)
 make
+make install          # Copy to ../../bin/
 
-# Build and copy to bin/
-make install
+# Windows cross-compile
+make -f Makefile.win
+make -f Makefile.win install
 
-# Create distribution package
-make dist-macos
-
-# Run tests
-make test
-
-# Clean build files
-make clean
+# Create distribution packages
+make dist-macos       # macOS tar.gz
+make -f Makefile.win dist-windows  # Windows zip
 ```
 
-### Running Python Version
-
+**Python Version:**
 ```bash
 # Run as module
 python -m evm.python --help
 
-# Or after installation
-evm --help
+# Install for development
+pip install -e .
 ```
 
-### Running Tests
+### Testing
 
 ```bash
-# Run Python tests
+# Python tests
 make test
-# or
 python -m pytest tests/ -v
 
-# Run C version tests
+# C version tests
 cd evm/c
 make test
-```
-
-## Configuration
-
-EVM stores environment variables in `~/.evm/env.json`:
-
-```
-~/.evm/
-├── env.json              # Main storage
-└── backup_*.json         # Backup files
-```
-
-Use custom storage location:
-```bash
-evm --env-file /path/to/custom.json set KEY value
 ```
 
 ## Examples
@@ -228,15 +246,15 @@ evm --env-file /path/to/custom.json set KEY value
 ### Development Workflow
 
 ```bash
-# Setup development environment
+# Setup dev environment
 evm setg dev NODE_ENV development
 evm setg dev API_URL http://localhost:3000
 evm setg dev DEBUG true
 
-# Export for sharing
+# Export for team
 evm export --format env -o .env
 
-# Run app with variables
+# Run application
 evm exec -- npm start
 ```
 
@@ -246,7 +264,7 @@ evm exec -- npm start
 # Backup before changes
 evm backup
 
-# Set production variables
+# Set production values
 evm setg prod NODE_ENV production
 evm setg prod API_URL https://api.example.com
 
@@ -254,23 +272,37 @@ evm setg prod API_URL https://api.example.com
 evm export --format sh -o deploy.sh
 ```
 
+### Multi-Environment Management
+
+```bash
+# Setup environments
+evm setg dev DATABASE_URL "localhost:5432/dev"
+evm setg test DATABASE_URL "test-server:5432/test"
+evm setg prod DATABASE_URL "prod-server:5432/prod"
+
+# View all
+evm list --show-groups
+
+# Export specific environment
+evm listg dev
+evm export --group dev --format env
+```
+
 ## Requirements
 
-- **C Version**: C99 compiler (gcc/clang), macOS or Linux
+- **C Version**: C99 compiler (gcc/clang for Unix, MinGW for Windows)
 - **Python Version**: Python 3.6+
-- **No external dependencies** for runtime
+- **No runtime dependencies**
 
-## Storage Format
+## Platform Support
 
-Environment variables are stored as JSON:
+| Platform | Binary Size | Format |
+|----------|-------------|--------|
+| macOS | ~69KB | ELF/Mach-O |
+| Linux | ~69KB | ELF |
+| Windows | ~298KB | PE32+ |
 
-```json
-{
-  "API_KEY": "secret123",
-  "dev:DATABASE_URL": "localhost:5432",
-  "prod:DATABASE_URL": "prod.example.com:5432"
-}
-```
+Windows binary is larger due to static linking of C runtime.
 
 ## License
 

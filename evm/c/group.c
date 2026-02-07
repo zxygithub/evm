@@ -3,7 +3,11 @@
  * Group Management Functions Implementation
  */
 
+#ifdef _WIN32
+#include "evm_win.h"
+#else
 #include "evm.h"
+#endif
 
 /* Set variable in specific group */
 bool evm_set_grouped(EnvManager *mgr, const char *group, const char *key, const char *value) {

@@ -3,7 +3,11 @@
  * Core Functions Implementation
  */
 
+#ifdef _WIN32
+#include "evm_win.h"
+#else
 #include "evm.h"
+#endif
 #include <ctype.h>
 
 /* Initialize environment manager */
@@ -275,7 +279,11 @@ bool evm_execute(EnvManager *mgr, char **args, int argc) {
     
     /* Set environment variables */
     for (int i = 0; i < mgr->count; i++) {
+#ifdef _WIN32
+        SetEnvironmentVariable(mgr->vars[i].key, mgr->vars[i].value);
+#else
         setenv(mgr->vars[i].key, mgr->vars[i].value, 1);
+#endif
     }
     
     /* Execute command */

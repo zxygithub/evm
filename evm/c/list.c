@@ -3,7 +3,11 @@
  * List and Search Functions Implementation
  */
 
+#ifdef _WIN32
+#include "evm_win.h"
+#else
 #include "evm.h"
+#endif
 #include <ctype.h>
 
 /* Compare function for sorting */
@@ -228,22 +232,4 @@ void evm_search(EnvManager *mgr, const char *pattern, bool search_value) {
     printf("Total: %d matches\n", result_count);
 }
 
-/* Case-insensitive strstr (GNU extension) */
-char *strcasestr(const char *haystack, const char *needle) {
-    if (!needle[0]) return (char *)haystack;
-    
-    char *h = (char *)haystack;
-    while (*h) {
-        if (tolower((unsigned char)*h) == tolower((unsigned char)*needle)) {
-            char *h2 = h + 1;
-            char *n2 = (char *)needle + 1;
-            while (*n2 && tolower((unsigned char)*h2) == tolower((unsigned char)*n2)) {
-                h2++;
-                n2++;
-            }
-            if (!*n2) return h;
-        }
-        h++;
-    }
-    return NULL;
-}
+/* strcasestr is defined in utils_win.c for Windows, or use system version on Unix */

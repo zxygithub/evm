@@ -1,0 +1,76 @@
+# EVM Windows Build Makefile
+# Supports cross-compilation from macOS/Linux to Windows
+
+# Cross-compiler (can be overridden)
+CC = x86_64-w64-mingw32-gcc
+
+# Compiler flags
+CFLAGS = -Wall -O2 -std=c99 -D_WIN32 -D_GNU_SOURCE
+LDFLAGS = -static
+
+# Target executable
+TARGET = evm.exe
+
+# Source files for Windows build
+SOURCES = main_win.c core.c utils_win.c list.c io.c group.c
+OBJECTS = $(SOURCES:.c=.o)
+
+# Default target
+all: $(TARGET)
+
+# Build target
+$(TARGET): $(OBJECTS)
+	$(CC) $(OBJECTS) -o $(TARGET) $(LDFLAGS)
+	@echo "Windows build complete: $(TARGET)"
+
+# Compile source files
+%.o: %.c evm_win.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Install to bin directory
+install: $(TARGET)
+	mkdir -p ../../bin
+	cp $(TARGET) ../../bin/
+	@echo "Installed to ../../bin/$(TARGET)"
+
+# Create Windows distribution package
+dist-windows: $(TARGET)
+	@echo "Creating Windows distribution package..."
+	mkdir -p evm-cli-windows
+	cp $(TARGET) evm-cli-windows/
+	cp ../../README.md evm-cli-windows/ 2>/dev/null || echo "README.md not found"
+	cp ../../LICENSE evm-cli-windows/ 2>/dev/null || echo "LICENSE not found"
+	
+	@echo '@echo off' > evm-cli-windows/install.bat
+	@echo 'echo Installing EVM...' >> evm-cli-windows/install.bat
+	@echo 'copy evm.exe %%USERPROFILE%%\\.local\\bin\\ 2>nul || copy evm.exe C:\\Windows\\System32\\' >> evm-cli-windows/install.bat
+	@echo 'echo EVM installed successfully!' >> evm-cli-windows/install.bat
+	@echo 'echo Run "evm --help" to get started' >> evm-cli-windows/install.bat
+	@echo 'pause' >> evm-cli-windows/install.bat
+	
+	@echo '# EVM Windows Installation' > evm-cli-windows/INSTALL.txt
+	@echo '' >> evm-cli-windows/INSTALL.txt
+	@echo '## Quick Install' >> evm-cli-windows/INSTALL.txt
+	@echo '1. Run install.bat as Administrator' >> evm-cli-windows/INSTALL.txt
+	@echo '2. Or manually copy evm.exe to a folder in your PATH' >> evm-cli-windows/INSTALL.txt
+	@echo '' >> evm-cli-windows/INSTALL.txt
+	@echo '## Manual Install' >> evm-cli-windows/INSTALL.txt
+	@echo '```cmd' >> evm-cli-windows/INSTALL.txt
+	@echo 'copy evm.exe C:\Windows\System32\' >> evm-cli-windows/INSTALL.txt
+	@echo '```' >> evm-cli-windows/INSTALL.txt
+	
+	zip -r evm-cli-windows.zip evm-cli-windows
+	@echo "Windows distribution package created: evm-cli-windows.zip"
+
+# Clean build files
+clean:
+	rm -f $(OBJECTS) $(TARGET)
+	rm -rf evm-cli-windows evm-cli-windows.zip
+	@echo "Clean complete"
+
+# Check if cross-compiler is available
+check:
+	@echo "Checking for Windows cross-compiler..."
+	$(CC) --version || (echo "ERROR: $(CC) not found. Install mingw-w64:" && echo "  macOS: brew install mingw-w64" && echo "  Ubuntu/Debian: sudo apt-get install mingw-w64" && exit 1)
+
+.PHONY: all clean install dist-windows check

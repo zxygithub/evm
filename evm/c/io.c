@@ -3,7 +3,11 @@
  * Import/Export and Backup Functions Implementation
  */
 
+#ifdef _WIN32
+#include "evm_win.h"
+#else
 #include "evm.h"
+#endif
 #include <ctype.h>
 
 /* External compare function from list.c */

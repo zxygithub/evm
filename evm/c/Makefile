@@ -39,6 +39,13 @@ uninstall:
 	rm -f /usr/local/bin/$(TARGET)
 	@echo "Uninstalled $(TARGET)"
 
+# Copy to bin directory
+install: $(TARGET)
+	mkdir -p ../../bin
+	cp $(TARGET) ../../bin/
+	cp evm-cli-macos.tar.gz ../../bin/ 2>/dev/null || true
+	@echo "Installed to ../../bin/"
+
 # Create macOS distribution package
 dist-macos: $(TARGET)
 	@echo "Creating macOS distribution package..."
@@ -46,7 +53,6 @@ dist-macos: $(TARGET)
 	cp $(TARGET) evm-cli-macos/
 	cp ../../README.md evm-cli-macos/ 2>/dev/null || echo "README.md not found"
 	cp ../../LICENSE evm-cli-macos/ 2>/dev/null || echo "LICENSE not found"
-	cp ../../QUICKSTART.md evm-cli-macos/ 2>/dev/null || echo "QUICKSTART.md not found"
 	
 	@echo '#!/bin/bash' > evm-cli-macos/install.sh
 	@echo '# EVM macOS Installation Script' >> evm-cli-macos/install.sh
@@ -87,4 +93,4 @@ test: $(TARGET)
 	./$(TARGET) delete TEST_VAR
 	@echo "Basic tests passed!"
 
-.PHONY: all clean install-local uninstall dist-macos debug test
+.PHONY: all clean install install-local uninstall dist-macos debug test

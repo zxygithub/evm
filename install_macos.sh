@@ -6,7 +6,7 @@
 
 set -e
 
-VERSION="1.4.0"
+VERSION="1.5.0"
 INSTALL_DIR="/usr/local/bin"
 
 echo "======================================"

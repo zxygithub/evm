@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from evm.main import EnvironmentManager
+from evm.python.main import EnvironmentManager
 
 
 class TestEnvironmentManager(unittest.TestCase):

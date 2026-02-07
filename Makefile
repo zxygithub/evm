@@ -43,12 +43,12 @@ format: ## Format code with black
 
 run: ## Run EVM with example commands
 	@echo "Setting up example environment..."
-	python -m evm.main set NODE_ENV development
-	python -m evm.main set API_URL http://localhost:3000
-	python -m evm.main set DEBUG true
+	python -m evm.python set NODE_ENV development
+	python -m evm.python set API_URL http://localhost:3000
+	python -m evm.python set DEBUG true
 	@echo ""
 	@echo "Listing environment variables:"
-	python -m evm.main list
+	python -m evm.python list
 	@echo ""
 	@echo "Running example complete!"
 
@@ -56,33 +56,33 @@ demo: ## Run a full demo of EVM features
 	@echo "=== EVM Demo ==="
 	@echo ""
 	@echo "1. Setting environment variables..."
-	python -m evm.main set APP_NAME "EVM Demo"
-	python -m evm.main set APP_VERSION "1.0.0"
-	python -m evm.main set ENVIRONMENT "development"
+	python -m evm.python set APP_NAME "EVM Demo"
+	python -m evm.python set APP_VERSION "1.0.0"
+	python -m evm.python set ENVIRONMENT "development"
 	@echo ""
 	@echo "2. Listing all variables:"
-	python -m evm.main list
+	python -m evm.python list
 	@echo ""
 	@echo "3. Getting a specific variable:"
-	python -m evm.main get APP_NAME
+	python -m evm.python get APP_NAME
 	@echo ""
 	@echo "4. Searching for 'APP':"
-	python -m evm.main search APP
+	python -m evm.python search APP
 	@echo ""
 	@echo "5. Exporting to .env format:"
-	python -m evm.main export --format env
+	python -m evm.python export --format env
 	@echo ""
 	@echo "6. Creating backup:"
-	python -m evm.main backup
+	python -m evm.python backup
 	@echo ""
 	@echo "7. Renaming variable:"
-	python -m evm.main rename ENVIRONMENT ENV
+	python -m evm.python rename ENVIRONMENT ENV
 	@echo ""
 	@echo "8. Copying variable:"
-	python -m evm.main copy APP_NAME APP
+	python -m evm.python copy APP_NAME APP
 	@echo ""
 	@echo "9. Final list:"
-	python -m evm.main list
+	python -m evm.python list
 	@echo ""
 	@echo "=== Demo Complete ==="
 

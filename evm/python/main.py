@@ -569,7 +569,7 @@ Group/Namespace Management:
         """
     )
 
-    parser.add_argument('--version', action='version', version='%(prog)s 1.4.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 1.5.0')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Show verbose version information')
     parser.add_argument('--env-file', help='Path to environment storage file (default: ~/.evm/env.json)')

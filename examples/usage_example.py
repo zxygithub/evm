@@ -3,7 +3,7 @@
 演示如何在 Python 代码中使用 EVM 的示例脚本。
 """
 
-from evm.main import EnvironmentManager
+from evm.python.main import EnvironmentManager
 import os
 
 def main():

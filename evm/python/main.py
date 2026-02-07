@@ -74,6 +74,10 @@ class EnvironmentManager:
             print(f"Environment variable '{key}' not found", file=sys.stderr)
             sys.exit(1)
 
+    def exists(self, key: str) -> bool:
+        """Check if an environment variable exists."""
+        return key in self._env_vars
+
     def list(self, pattern: Optional[str] = None, group: Optional[str] = None,
              show_groups: bool = False, no_prefix: bool = False) -> None:
         """List all environment variables."""
@@ -490,6 +494,10 @@ class EnvironmentManager:
             print(f"{group:<30} ({count} variables)")
         print("-" * 50)
         print(f"Total: {len(groups)} groups")
+
+    def list_group(self, group: str, no_prefix: bool = False) -> None:
+        """List variables in a specific group."""
+        self.list(group=group, no_prefix=no_prefix)
 
     def delete_group(self, group: str) -> None:
         """Delete all variables in a group."""

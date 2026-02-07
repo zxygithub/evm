@@ -330,7 +330,10 @@ class EnvironmentManager:
 
         # Create a copy of current environment and update with our variables
         env_copy = os.environ.copy()
-        env_copy.update(self._env_vars)
+        
+        # Convert all values to strings (os.environ requires string values)
+        for key, value in self._env_vars.items():
+            env_copy[key] = str(value)
 
         try:
             # Execute the command
@@ -527,7 +530,43 @@ class EnvironmentManager:
         new_key = f"{new_group}:{key}"
         self._env_vars[new_key] = value
         self._save_env_vars()
-        print(f"Moved: {key} -> {new_group}:{key}")
+        print(f"Moved: {key} -> {new_key}")
+
+    def load_to_memory(self, filter_prefix: Optional[str] = None, add_evm_prefix: bool = True) -> None:
+        """Load environment variables from file to system memory (os.environ).
+        
+        Args:
+            filter_prefix: Only load variables with keys starting with this prefix
+            add_evm_prefix: Whether to add 'EVM:' prefix to variable names (default: True)
+        """
+        import os
+        loaded_count = 0
+        
+        for key, value in self._env_vars.items():
+            # Skip if filter_prefix is specified and key doesn't match
+            if filter_prefix and not key.startswith(filter_prefix):
+                continue
+            
+            # Build final key name
+            final_key = f"EVM:{key}" if add_evm_prefix else key
+            
+            # Convert value to string (os.environ requires string values)
+            str_value = str(value)
+            
+            # Set in system environment
+            os.environ[final_key] = str_value
+            loaded_count += 1
+        
+        if loaded_count > 0:
+            print(f"Loaded {loaded_count} environment variables to memory")
+            if add_evm_prefix:
+                print("Prefix 'EVM:' added to all variable names")
+            if filter_prefix:
+                print(f"Filter: keys starting with '{filter_prefix}'")
+        else:
+            print("No environment variables to load")
+            if filter_prefix:
+                print(f"No variables found with prefix '{filter_prefix}'")
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -663,6 +702,12 @@ Group/Namespace Management:
     exec_parser = subparsers.add_parser('exec', help='Execute command with environment variables')
     exec_parser.add_argument('exec_args', nargs='+', help='Command to execute')
 
+    # Loadmemory command
+    loadmem_parser = subparsers.add_parser('loadmemory', help='Load environment variables from file to system memory')
+    loadmem_parser.add_argument('--prefix', '-p', help='Only load variables with keys starting with this prefix')
+    loadmem_parser.add_argument('--no-prefix', action='store_true',
+                               help='Do not add EVM: prefix to variable names')
+
     # Rename command
     rename_parser = subparsers.add_parser('rename', help='Rename an environment variable')
     rename_parser.add_argument('old_key', help='Current variable name')
@@ -742,6 +787,10 @@ def main():
             env_manager.load(args.file, format_type, replace, group, nest)
         elif args.command == 'exec':
             env_manager.execute(args.exec_args)
+        elif args.command == 'loadmemory':
+            filter_prefix = getattr(args, 'prefix', None)
+            add_evm_prefix = not getattr(args, 'no_prefix', False)
+            env_manager.load_to_memory(filter_prefix, add_evm_prefix)
         elif args.command == 'rename':
             env_manager.rename(args.old_key, args.new_key)
         elif args.command == 'copy':

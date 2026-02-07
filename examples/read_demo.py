@@ -63,6 +63,7 @@ def main():
     print("4. 环境变量统计:")
     total_vars = len(os.environ)
     print(f"   系统环境变量总数: {total_vars}")
+    print(os.environ)  # 打印所有环境变量（可能很多，实际使用中可以选择性打印）
     
     # 统计包含特定关键词的变量
     api_vars = [k for k in os.environ if 'API' in k]

@@ -1,6 +1,6 @@
 # EVM - Environment Variable Manager
 
-A powerful cross-platform command-line tool for managing environment variables. Supports macOS, Linux, and Windows.
+A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
 **Version**: 1.5.0
 
@@ -12,7 +12,8 @@ A powerful cross-platform command-line tool for managing environment variables. 
 - ✅ **Backup/Restore**: Timestamps and merge support
 - ✅ **Groups**: Namespace-based organization
 - ✅ **Execute**: Run commands with custom environment
-- ✅ **Cross-Platform**: Native support for macOS, Linux, Windows
+- ✅ **Load to Memory**: Sync variables to system environment
+- ✅ **Native macOS/Linux**: Optimized for Unix systems
 
 ## Project Structure
 
@@ -20,16 +21,19 @@ A powerful cross-platform command-line tool for managing environment variables. 
 evm/
 ├── bin/                      # Pre-built binaries
 │   ├── evm                   # macOS/Linux executable
-│   ├── evm.exe              # Windows executable
+│   ├── evm-1.5.0-macos.pkg  # macOS PKG installer
 │   ├── evm-cli-macos.tar.gz # macOS distribution
-│   └── evm-cli-windows.zip  # Windows distribution
+│   └── evm-installer-macos.tar.gz  # macOS installer with script
 ├── evm/
 │   ├── c/                    # C implementation
-│   │   ├── main.c, main_win.c
-│   │   ├── core.c, io.c, list.c, group.c
-│   │   ├── utils.c, utils_win.c
-│   │   ├── evm.h, evm_win.h
-│   │   ├── Makefile, Makefile.win
+│   │   ├── main.c            # Main entry
+│   │   ├── core.c            # Core functionality
+│   │   ├── io.c              # Import/Export
+│   │   ├── list.c            # List/Search
+│   │   ├── group.c           # Group management
+│   │   ├── utils.c           # Utilities
+│   │   ├── evm.h             # Header file
+│   │   ├── Makefile          # Build configuration
 │   │   └── ...
 │   └── python/               # Python implementation
 │       ├── main.py
@@ -50,33 +54,38 @@ evm/
 
 ### Option 1: Pre-built Binaries (Recommended)
 
-**macOS/Linux:**
+**macOS PKG Installer:**
 ```bash
-cp bin/evm /usr/local/bin/
-chmod +x /usr/local/bin/evm
-evm --version
+# Double-click to install
+open bin/evm-1.5.0-macos.pkg
+
+# Or install via command line
+sudo installer -pkg bin/evm-1.5.0-macos.pkg -target /
 ```
 
-**Windows:**
-```cmd
-# Extract bin/evm-cli-windows.zip
-copy evm.exe C:\Windows\System32\
+**Manual Installation:**
+```bash
+# Using tar.gz with install script
+tar -xzf bin/evm-installer-macos.tar.gz
+cd evm-installer-macos
+./install.sh
+
+# Or simple binary copy
+sudo cp bin/evm /usr/local/bin/
+sudo chmod +x /usr/local/bin/evm
+
+# Verify
 evm --version
+evm --help
 ```
 
 ### Option 2: Build from Source
 
-**C Version (All Platforms):**
+**C Version:**
 ```bash
-# macOS/Linux
 cd evm/c
 make
 sudo make install-local  # Install to /usr/local/bin
-
-# Windows (Cross-compile from macOS/Linux)
-cd evm/c
-make -f Makefile.win
-# Output: evm.exe
 ```
 
 **Python Version:**
@@ -160,6 +169,22 @@ evm restore backup.json
 evm restore backup.json --merge   # Merge with existing
 ```
 
+### Load to System Memory
+
+```bash
+# Load all variables to memory (with EVM: prefix)
+evm loadmemory
+
+# Load without prefix
+evm loadmemory --no-prefix
+
+# Load with filter
+evm loadmemory --prefix DEMO_
+
+# Check in Python
+python -c "import os; print(os.environ.get('EVM:API_KEY'))"
+```
+
 ### Execute Commands
 
 ```bash
@@ -180,12 +205,8 @@ evm search localhost --value
 
 ## Storage
 
-Environment variables are stored as JSON:
+Environment variables are stored as JSON in `~/.evm/env.json`:
 
-- **macOS/Linux**: `~/.evm/env.json`
-- **Windows**: `%USERPROFILE%\.evm\env.json`
-
-Example storage format:
 ```json
 {
   "API_KEY": "secret123",
@@ -207,17 +228,20 @@ evm --env-file /path/to/custom.json list
 ```bash
 cd evm/c
 
-# Native build (macOS/Linux)
+# Build
 make
-make install          # Copy to ../../bin/
 
-# Windows cross-compile
-make -f Makefile.win
-make -f Makefile.win install
+# Install to bin/
+make install
 
-# Create distribution packages
-make dist-macos       # macOS tar.gz
-make -f Makefile.win dist-windows  # Windows zip
+# Create distribution package
+make dist-macos
+
+# Run tests
+make test
+
+# Clean
+make clean
 ```
 
 **Python Version:**
@@ -290,7 +314,7 @@ evm export --group dev --format env
 
 ## Requirements
 
-- **C Version**: C99 compiler (gcc/clang for Unix, MinGW for Windows)
+- **C Version**: C99 compiler (gcc/clang)
 - **Python Version**: Python 3.6+
 - **No runtime dependencies**
 
@@ -298,11 +322,8 @@ evm export --group dev --format env
 
 | Platform | Binary Size | Format |
 |----------|-------------|--------|
-| macOS | ~69KB | ELF/Mach-O |
+| macOS | ~69KB | Mach-O |
 | Linux | ~69KB | ELF |
-| Windows | ~298KB | PE32+ |
-
-Windows binary is larger due to static linking of C runtime.
 
 ## License
 

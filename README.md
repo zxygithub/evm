@@ -22,6 +22,21 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 
 ## Installation
 
+### macOS 独立版本（无需 Python）
+
+```bash
+# 方法一：一键安装脚本
+curl -fsSL https://raw.githubusercontent.com/zxygithub/evm/main/install_macos.sh | bash
+
+# 方法二：手动下载安装
+# 从 Releases 页面下载 evm-cli-macos.tar.gz
+tar -xzf evm-cli-macos.tar.gz
+cd evm-cli-macos
+./install.sh
+```
+
+### Python 版本
+
 ```bash
 # Clone the repository
 git clone https://github.com/zxygithub/evm.git
@@ -362,8 +377,20 @@ For detailed information about test files, see [tests/test_case/README.md](tests
 
 ## Requirements
 
-- Python 3.6 or higher
+- Python 3.6 or higher (for Python installation)
+- macOS 10.14+ (for standalone version)
 - No external dependencies (uses only Python standard library)
+
+## macOS Standalone Version
+
+EVM can be deployed as a standalone macOS executable without requiring Python:
+
+```bash
+# Quick install (no Python required)
+curl -fsSL https://raw.githubusercontent.com/zxygithub/evm/main/install_macos.sh | bash
+```
+
+For detailed build and deployment instructions, see [MACOS_DEPLOY.md](MACOS_DEPLOY.md).
 
 ## License
 

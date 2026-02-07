@@ -1,4 +1,4 @@
-.PHONY: help install uninstall test clean lint format run
+.PHONY: help install uninstall test clean lint format run build-macos install-macos
 
 help: ## Show this help message
 	@echo "EVM - Environment Variable Manager"
@@ -28,6 +28,9 @@ clean: ## Clean up temporary files
 	rm -rf .pytest_cache/
 	rm -rf htmlcov/
 	rm -rf .coverage
+	rm -rf evm-cli-macos/
+	rm -f evm-cli-macos.tar.gz
+	rm -f evm.spec
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 
@@ -82,3 +85,12 @@ demo: ## Run a full demo of EVM features
 	python -m evm.main list
 	@echo ""
 	@echo "=== Demo Complete ==="
+
+# macOS 构建目标
+build-macos: ## Build standalone macOS executable
+	@echo "Building macOS standalone executable..."
+	bash build_macos.sh
+
+install-macos: ## Install EVM on macOS from source
+	@echo "Installing EVM on macOS..."
+	bash install_macos.sh

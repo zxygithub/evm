@@ -3,7 +3,24 @@
 EVM 命令行接口
 
 负责 argparse 解析、命令调度和输出格式化。
-所有 print/sys.exit 逻辑集中在此模块。
+
+输出模式:
+  - 默认: 人类可读文本 (stdout)
+  - --json: 结构化 JSON (stdout=数据, stderr=日志)
+  - --quiet: 静默模式 (仅退出码)
+
+退出码:
+  0  — 成功
+  1  — 通用错误 / 操作取消
+  2  — 变量不存在 (KeyNotFoundError)
+  3  — 存储错误 (StorageError / CorruptedStorageError / LockTimeoutError)
+  4  — 输入格式错误 (ImportError_ / ExportError)
+  5  — 解密失败 (DecryptionError)
+  6  — 校验失败 (ValidationError / SchemaError)
+  7  — 分组错误 (GroupNotFoundError / GroupOperationError)
+  8  — 备份错误 (BackupError)
+  9  — 编辑器错误 (EditorError)
+  10 — 命令未找到 (CommandNotFoundError)
 """
 
 import argparse
@@ -11,7 +28,26 @@ import sys
 from typing import List, Optional
 
 from ._completion import SHELL_GENERATORS
-from .exceptions import EVMError, GroupNotFoundError, OperationCancelledError
+from ._json import json_error, json_output
+from .exceptions import (
+    BackupError,
+    CommandNotFoundError,
+    CorruptedStorageError,
+    DecryptionError,
+    EditorError,
+    EVMError,
+    ExportError,
+    GroupNotFoundError,
+    GroupOperationError,
+    ImportError_,
+    KeyAlreadyExistsError,
+    KeyNotFoundError,
+    LockTimeoutError,
+    OperationCancelledError,
+    SchemaError,
+    StorageError,
+    ValidationError,
+)
 from .formatters import (
     print_diff,
     print_groups,
@@ -27,6 +63,26 @@ from .formatters import (
 )
 from .manager import EnvironmentManager
 
+# 异常类型 → 退出码映射
+EXIT_CODE_MAP = {
+    KeyNotFoundError: 2,
+    KeyAlreadyExistsError: 2,
+    StorageError: 3,
+    CorruptedStorageError: 3,
+    LockTimeoutError: 3,
+    ImportError_: 4,
+    ExportError: 4,
+    DecryptionError: 5,
+    ValidationError: 6,
+    SchemaError: 6,
+    GroupNotFoundError: 7,
+    GroupOperationError: 7,
+    BackupError: 8,
+    EditorError: 9,
+    CommandNotFoundError: 10,
+    OperationCancelledError: 1,
+}
+
 # 所有顶级命令（用于补全生成）
 ALL_COMMANDS = [
     'set', 'get', 'delete', 'list', 'clear',
@@ -40,6 +96,14 @@ ALL_COMMANDS = [
 ]
 
 
+def _exit_code_for(exc: EVMError) -> int:
+    """根据异常类型返回退出码"""
+    for exc_type, code in EXIT_CODE_MAP.items():
+        if isinstance(exc, exc_type):
+            return code
+    return 1
+
+
 def create_parser() -> argparse.ArgumentParser:
     """创建命令行参数解析器"""
     parser = argparse.ArgumentParser(
@@ -51,19 +115,24 @@ Examples:
   evm set API_KEY abc123           # Set a variable
   evm set --secret DB_PASS mypass  # Set an encrypted secret
   evm get API_KEY                  # Get a variable
-  evm get --secret DB_PASS         # Get and decrypt a secret
-  evm list                         # List all variables
+  evm get API_KEY --json           # Get as JSON: {"status":"ok","data":{"key":"API_KEY","value":"..."}}
+  evm list --json                  # List all as JSON
   evm list --show-groups           # List by namespace
   evm export --format env          # Export to .env
   evm load config.json --nest      # Import nested JSON
   evm edit API_KEY                 # Edit in $EDITOR
-  evm info                         # Show tool info
+  evm info --json                  # Tool info as JSON
   evm diff backup.json             # Compare with backup
   evm expand URL                   # Expand {{VAR}} templates
   evm validate API_URL             # Validate against schema
-  evm history                      # Show operation log
+  evm history --json               # History as JSON
   evm schema set API_URL --format url
   evm completion bash              # Generate shell completion
+
+Agent-friendly usage:
+  evm get KEY --json               # stdout = JSON, stderr = errors
+  evm list --json --quiet          # stdout = JSON only, no decoration
+  evm --json info                  # All commands support --json
 
 Group Management:
   evm setg dev DB_URL localhost
@@ -73,17 +142,36 @@ Group Management:
   evm delete-group dev
 
 Options:
+  --json     Output structured JSON to stdout (agent-friendly)
+  --quiet    Suppress all human-readable output
   --dry-run  Preview changes (set, delete, clear, rename, copy, export,
              load, setg, deleteg, delete-group, move-group, set --secret)
   --force    Skip confirmation for destructive operations (clear, delete-group)
+
+Exit Codes:
+  0  Success
+  1  General error / cancelled
+  2  Variable not found
+  3  Storage error
+  4  Import/export format error
+  5  Decryption error
+  6  Validation/schema error
+  7  Group error
+  8  Backup error
+  9  Editor error
+  10 Command not found
         """,
     )
 
-    parser.add_argument('--version', action='version', version='%(prog)s 1.8.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 1.9.0')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Show detailed version information')
     parser.add_argument('--env-file',
                         help='Path to storage file (default: ~/.evm/env.json)')
+    parser.add_argument('--json', dest='json_mode', action='store_true',
+                        help='Output structured JSON (agent-friendly)')
+    parser.add_argument('--quiet', '-q', action='store_true',
+                        help='Suppress human-readable output')
     parser.add_argument('--dry-run', action='store_true',
                         help='Preview changes without writing')
     parser.add_argument('--force', action='store_true',
@@ -265,13 +353,24 @@ def _confirm(message: str) -> bool:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    """主入口"""
+    """主入口
+
+    Returns:
+        退出码 (0=成功, 1-10=按异常类型细分)
+    """
     parser = create_parser()
     args = parser.parse_args(argv)
 
+    json_mode = getattr(args, 'json_mode', False)
+    quiet = getattr(args, 'quiet', False)
+
     if args.verbose:
         mgr = EnvironmentManager(args.env_file)
-        print_info(mgr.info())
+        info = mgr.info()
+        if json_mode:
+            json_output(info, quiet)
+        else:
+            print_info(info)
         return 0
 
     if not args.command:
@@ -283,45 +382,83 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         mgr = EnvironmentManager(args.env_file)
-        _dispatch(mgr, args, dry_run, force)
-        return 0
+        return _dispatch(mgr, args, dry_run, force, json_mode, quiet)
     except OperationCancelledError:
-        print("Operation cancelled.", file=sys.stderr)
-        return 1
-    except GroupNotFoundError as e:
-        print(str(e), file=sys.stderr)
+        if json_mode:
+            json_error("Operation cancelled.", 1, quiet)
+        else:
+            print("Operation cancelled.", file=sys.stderr)
         return 1
     except EVMError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        code = _exit_code_for(e)
+        if json_mode:
+            json_error(str(e), code, quiet)
+        else:
+            print(f"Error: {e}", file=sys.stderr)
+        return code
     except KeyboardInterrupt:
-        print("\nOperation cancelled", file=sys.stderr)
+        if not quiet:
+            print("\nOperation cancelled", file=sys.stderr)
         return 1
     except Exception as e:
-        print(f"Unexpected error: {e}", file=sys.stderr)
+        if json_mode:
+            json_error(f"Unexpected error: {e}", 1, quiet)
+        else:
+            print(f"Unexpected error: {e}", file=sys.stderr)
         return 1
 
 
-def _dispatch(mgr: EnvironmentManager, args, dry_run: bool, force: bool) -> None:
-    """命令调度"""
+def _dispatch(
+    mgr: EnvironmentManager,
+    args,
+    dry_run: bool,
+    force: bool,
+    json_mode: bool,
+    quiet: bool,
+) -> int:
+    """命令调度
+
+    Returns:
+        退出码（通常为 0，exec 命令透传子进程退出码）
+    """
     cmd = args.command
 
     # ── 基本命令 ──────────────────────────────────────────
 
     if cmd == 'set':
         if getattr(args, 'secret', False):
-            print(mgr.set_secret(args.key, args.value, dry_run=dry_run))
+            msg = mgr.set_secret(args.key, args.value, dry_run=dry_run)
+            if json_mode:
+                json_output({
+                    "key": args.key, "encrypted": True, "message": msg,
+                }, quiet)
+            elif not quiet:
+                print(msg)
         else:
-            print(mgr.set(args.key, args.value, dry_run=dry_run))
+            msg = mgr.set(args.key, args.value, dry_run=dry_run)
+            if json_mode:
+                json_output({
+                    "key": args.key, "value": args.value, "message": msg,
+                }, quiet)
+            elif not quiet:
+                print(msg)
 
     elif cmd == 'get':
         if getattr(args, 'secret', False):
-            print(mgr.get_secret(args.key))
+            value = mgr.get_secret(args.key)
         else:
-            print(mgr.get(args.key))
+            value = mgr.get(args.key)
+        if json_mode:
+            json_output({"key": args.key, "value": value}, quiet)
+        elif not quiet:
+            print(value)
 
     elif cmd == 'delete':
-        print(mgr.delete(args.key, dry_run=dry_run))
+        msg = mgr.delete(args.key, dry_run=dry_run)
+        if json_mode:
+            json_output({"key": args.key, "deleted": True, "message": msg}, quiet)
+        elif not quiet:
+            print(msg)
 
     elif cmd == 'list':
         no_prefix = getattr(args, 'no_prefix', False)
@@ -332,14 +469,20 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool, force: bool) -> None
                 filtered = mgr.list_vars(pattern=args.pattern)
             else:
                 filtered = mgr.list_vars()
-            print_vars_by_group(filtered)
+            if json_mode:
+                json_output(filtered, quiet)
+            elif not quiet:
+                print_vars_by_group(filtered)
         else:
             result = mgr.list_vars(
                 pattern=args.pattern,
                 group=args.group,
                 no_prefix=no_prefix,
             )
-            print_vars_table(result)
+            if json_mode:
+                json_output(result, quiet)
+            elif not quiet:
+                print_vars_table(result)
 
     elif cmd == 'clear':
         if not dry_run and not force:
@@ -348,26 +491,58 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool, force: bool) -> None
                 f"This will clear all {count} variables. Continue?"
             ):
                 raise OperationCancelledError("clear")
-        print(mgr.clear(dry_run=dry_run))
+        count = len(mgr._env_vars)
+        msg = mgr.clear(dry_run=dry_run)
+        if json_mode:
+            json_output({"cleared": count, "message": msg}, quiet)
+        elif not quiet:
+            print(msg)
 
     # ── 分组命令 ──────────────────────────────────────────
 
     elif cmd == 'groups':
-        print_groups(mgr.list_groups())
+        groups = mgr.list_groups()
+        if json_mode:
+            json_output({"groups": groups}, quiet)
+        elif not quiet:
+            print_groups(groups)
 
     elif cmd == 'setg':
-        print(mgr.set_grouped(args.group, args.key, args.value, dry_run=dry_run))
+        msg = mgr.set_grouped(args.group, args.key, args.value, dry_run=dry_run)
+        if json_mode:
+            json_output({
+                "group": args.group, "key": args.key,
+                "value": args.value, "message": msg,
+            }, quiet)
+        elif not quiet:
+            print(msg)
 
     elif cmd == 'getg':
-        print(mgr.get_grouped(args.group, args.key))
+        value = mgr.get_grouped(args.group, args.key)
+        if json_mode:
+            json_output({
+                "group": args.group, "key": args.key, "value": value,
+            }, quiet)
+        elif not quiet:
+            print(value)
 
     elif cmd == 'deleteg':
-        print(mgr.delete_grouped(args.group, args.key, dry_run=dry_run))
+        msg = mgr.delete_grouped(args.group, args.key, dry_run=dry_run)
+        if json_mode:
+            json_output({
+                "group": args.group, "key": args.key,
+                "deleted": True, "message": msg,
+            }, quiet)
+        elif not quiet:
+            print(msg)
 
     elif cmd == 'listg':
         no_prefix = getattr(args, 'no_prefix', False)
         result = mgr.list_vars(group=args.group, no_prefix=no_prefix)
-        print_vars_table(result)
+        if json_mode:
+            json_output(result, quiet)
+        elif not quiet:
+            print_vars_table(result)
 
     elif cmd == 'delete-group':
         if not dry_run and not force:
@@ -375,55 +550,105 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool, force: bool) -> None
                 f"This will delete group '{args.group}' and all its variables. Continue?"
             ):
                 raise OperationCancelledError("delete-group")
-        print(mgr.delete_group(args.group, dry_run=dry_run))
+        msg = mgr.delete_group(args.group, dry_run=dry_run)
+        if json_mode:
+            json_output({
+                "group": args.group, "deleted": True, "message": msg,
+            }, quiet)
+        elif not quiet:
+            print(msg)
 
     elif cmd == 'move-group':
-        print(mgr.move_to_group(args.key, args.group, dry_run=dry_run))
+        msg = mgr.move_to_group(args.key, args.group, dry_run=dry_run)
+        if json_mode:
+            json_output({
+                "key": args.key, "target_group": args.group, "message": msg,
+            }, quiet)
+        elif not quiet:
+            print(msg)
 
     # ── 导入导出 ──────────────────────────────────────────
 
     elif cmd == 'export':
-        print(mgr.export(
+        msg = mgr.export(
             format_type=args.format,
             output_file=args.output,
             group=args.group,
             dry_run=dry_run,
-        ))
+        )
+        if json_mode:
+            json_output({"message": msg, "format": args.format}, quiet)
+        elif not quiet:
+            print(msg)
 
     elif cmd == 'load':
-        print(mgr.load(
+        msg = mgr.load(
             input_file=args.file,
             format_type=getattr(args, 'format', None),
             replace=getattr(args, 'replace', False),
             group=getattr(args, 'group', None),
             nest=getattr(args, 'nest', False),
             dry_run=dry_run,
-        ))
+        )
+        if json_mode:
+            json_output({"message": msg, "file": args.file}, quiet)
+        elif not quiet:
+            print(msg)
 
     # ── 备份恢复 ──────────────────────────────────────────
 
     elif cmd == 'backup':
-        print(mgr.backup(args.file))
+        msg = mgr.backup(args.file)
+        if json_mode:
+            json_output({"message": msg}, quiet)
+        elif not quiet:
+            print(msg)
 
     elif cmd == 'restore':
-        print(mgr.restore(args.file, merge=getattr(args, 'merge', False)))
+        msg = mgr.restore(args.file, merge=getattr(args, 'merge', False))
+        if json_mode:
+            json_output({"message": msg, "file": args.file}, quiet)
+        elif not quiet:
+            print(msg)
 
     # ── 搜索/重命名/复制 ──────────────────────────────────
 
     elif cmd == 'search':
-        results = mgr.search(args.pattern, search_value=getattr(args, 'value', False))
-        print_search_results(results, args.pattern, getattr(args, 'value', False))
+        results = mgr.search(
+            args.pattern, search_value=getattr(args, 'value', False)
+        )
+        if json_mode:
+            json_output(results, quiet)
+        elif not quiet:
+            print_search_results(
+                results, args.pattern, getattr(args, 'value', False)
+            )
 
     elif cmd == 'rename':
-        print(mgr.rename(args.old_key, args.new_key, dry_run=dry_run))
+        msg = mgr.rename(args.old_key, args.new_key, dry_run=dry_run)
+        if json_mode:
+            json_output({
+                "old_key": args.old_key, "new_key": args.new_key,
+                "message": msg,
+            }, quiet)
+        elif not quiet:
+            print(msg)
 
     elif cmd == 'copy':
-        print(mgr.copy(args.src_key, args.dst_key, dry_run=dry_run))
+        msg = mgr.copy(args.src_key, args.dst_key, dry_run=dry_run)
+        if json_mode:
+            json_output({
+                "src_key": args.src_key, "dst_key": args.dst_key,
+                "message": msg,
+            }, quiet)
+        elif not quiet:
+            print(msg)
 
     # ── 执行/内存 ─────────────────────────────────────────
 
     elif cmd == 'exec':
-        mgr.execute(args.exec_args)
+        # P1: exec 返回子进程退出码
+        return mgr.execute(args.exec_args)
 
     elif cmd == 'loadmemory':
         filter_prefix = getattr(args, 'prefix', None)
@@ -432,21 +657,45 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool, force: bool) -> None
             filter_prefix=filter_prefix,
             add_evm_prefix=add_evm_prefix,
         )
-        print_load_memory_result(loaded, prefix_used, filter_used)
+        if json_mode:
+            json_output({
+                "loaded": loaded,
+                "evm_prefix": prefix_used,
+                "filter_prefix": filter_used,
+            }, quiet)
+        elif not quiet:
+            print_load_memory_result(loaded, prefix_used, filter_used)
 
     # ── 编辑/信息/Diff/展开 ───────────────────────────────
 
     elif cmd == 'edit':
-        print(mgr.edit(args.key))
+        msg = mgr.edit(args.key)
+        changed = "Updated" in msg
+        if json_mode:
+            json_output({"key": args.key, "changed": changed, "message": msg}, quiet)
+        elif not quiet:
+            print(msg)
 
     elif cmd == 'info':
-        print_info(mgr.info())
+        info = mgr.info()
+        if json_mode:
+            json_output(info, quiet)
+        elif not quiet:
+            print_info(info)
 
     elif cmd == 'diff':
-        print_diff(mgr.diff(args.file))
+        result = mgr.diff(args.file)
+        if json_mode:
+            json_output(result, quiet)
+        elif not quiet:
+            print_diff(result)
 
     elif cmd == 'expand':
-        print(mgr.expand(args.key))
+        expanded = mgr.expand(args.key)
+        if json_mode:
+            json_output({"key": args.key, "expanded": expanded}, quiet)
+        elif not quiet:
+            print(expanded)
 
     # ── P2 新功能 ─────────────────────────────────────────
 
@@ -454,36 +703,52 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool, force: bool) -> None
         key = getattr(args, 'key', None)
         if key:
             result = mgr.validate(key)
-            print_validate_result(key, result)
+            if json_mode:
+                json_output({"key": key, **result}, quiet)
+            elif not quiet:
+                print_validate_result(key, result)
         else:
             results = mgr.validate_all()
-            print_validate_all(results)
+            if json_mode:
+                json_output(results, quiet)
+            elif not quiet:
+                print_validate_all(results)
 
     elif cmd == 'history':
         if getattr(args, 'clear', False):
-            print(mgr.clear_history())
+            msg = mgr.clear_history()
+            if json_mode:
+                json_output({"message": msg}, quiet)
+            elif not quiet:
+                print(msg)
         else:
             entries = mgr.get_history(limit=args.limit)
-            print_history(entries)
+            if json_mode:
+                json_output(entries, quiet)
+            elif not quiet:
+                print_history(entries)
 
     elif cmd == 'schema':
-        _dispatch_schema(mgr, args)
+        return _dispatch_schema(mgr, args, json_mode, quiet)
 
     elif cmd == 'completion':
         generator = SHELL_GENERATORS.get(args.shell)
         if generator:
             script = generator(ALL_COMMANDS)
+            # completion 始终原样输出，不受 --json 影响
             print(script, end='')
         else:
-            print(f"Unsupported shell: {args.shell}", file=sys.stderr)
-            raise SystemExit(1)
+            raise EVMError(f"Unsupported shell: {args.shell}")
 
     else:
-        print(f"Unknown command: {cmd}", file=sys.stderr)
-        raise SystemExit(1)
+        raise EVMError(f"Unknown command: {cmd}")
+
+    return 0
 
 
-def _dispatch_schema(mgr: EnvironmentManager, args) -> None:
+def _dispatch_schema(
+    mgr: EnvironmentManager, args, json_mode: bool, quiet: bool
+) -> int:
     """Schema 子命令调度"""
     sc_cmd = getattr(args, 'schema_command', None)
 
@@ -498,33 +763,57 @@ def _dispatch_schema(mgr: EnvironmentManager, args) -> None:
             pattern=getattr(args, 'pattern', None),
             description=getattr(args, 'description', None),
         )
-        print(msg)
+        if json_mode:
+            json_output({"key": args.key, "message": msg}, quiet)
+        elif not quiet:
+            print(msg)
 
     elif sc_cmd == 'get':
         key = getattr(args, 'key', None)
         schema = mgr.get_schema(key)
-        print_schema(schema)
+        if json_mode:
+            json_output(schema, quiet)
+        elif not quiet:
+            print_schema(schema)
 
     elif sc_cmd == 'delete':
-        print(mgr.delete_schema(args.key))
+        msg = mgr.delete_schema(args.key)
+        if json_mode:
+            json_output({"key": args.key, "message": msg}, quiet)
+        elif not quiet:
+            print(msg)
 
     elif sc_cmd == 'list':
         schema = mgr.get_schema()
-        print_schema(schema)
+        if json_mode:
+            json_output(schema, quiet)
+        elif not quiet:
+            print_schema(schema)
 
     elif sc_cmd == 'validate':
         key = getattr(args, 'key', None)
         if key:
             result = mgr.validate(key)
-            print_validate_result(key, result)
+            if json_mode:
+                json_output({"key": key, **result}, quiet)
+            elif not quiet:
+                print_validate_result(key, result)
         else:
             results = mgr.validate_all()
-            print_validate_all(results)
+            if json_mode:
+                json_output(results, quiet)
+            elif not quiet:
+                print_validate_all(results)
 
     else:
         # 无子命令时显示 schema 列表
         schema = mgr.get_schema()
-        print_schema(schema)
+        if json_mode:
+            json_output(schema, quiet)
+        elif not quiet:
+            print_schema(schema)
+
+    return 0
 
 
-__all__ = ['create_parser', 'main', 'ALL_COMMANDS']
+__all__ = ['create_parser', 'main', 'ALL_COMMANDS', 'EXIT_CODE_MAP']

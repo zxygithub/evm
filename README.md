@@ -2,7 +2,7 @@
 
 A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
-**Version**: 1.8.0
+**Version**: 1.9.0
 
 ## Features
 
@@ -22,6 +22,9 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 - ✅ **History**: Operation audit log with JSONL storage
 - ✅ **Shell Completion**: bash, zsh, fish completion script generation
 - ✅ **Interactive Safety**: Confirmation prompts for destructive operations (`--force` to skip)
+- ✅ **JSON Output**: `--json` flag for structured output (agent-friendly, stdout=data, stderr=errors)
+- ✅ **Quiet Mode**: `--quiet` suppresses all human-readable output
+- ✅ **Granular Exit Codes**: 11 distinct codes for programmatic error handling
 - ✅ **Secure**: Shell-safe export, chmod 600, atomic writes, file lock with timeout
 - ✅ **Pure Python**: No external dependencies, Python 3.6+
 
@@ -39,10 +42,11 @@ evm/
 │   ├── _history.py           # HistoryMixin (operation logging)
 │   ├── _schema.py            # SchemaMixin (format validation)
 │   ├── _completion.py        # Shell completion generators (bash/zsh/fish)
+│   ├── _json.py              # JSON output helpers (agent-friendly)
 │   ├── formatters.py         # Terminal output formatting
 │   └── exceptions.py         # Custom exception hierarchy (17 classes)
 ├── examples/                 # Example scripts
-├── tests/                    # Test suite (150 tests)
+├── tests/                    # Test suite (201 tests)
 │   ├── test_main.py          # Unit + integration tests
 │   ├── run_tests.py          # Integration test runner
 │   └── test_case/            # Test configuration files
@@ -306,6 +310,76 @@ evm delete-group dev             # Asks: "This will delete group 'dev'... Contin
 # Skip confirmation with --force
 evm --force clear
 evm --force delete-group dev
+```
+
+## Agent-Friendly Usage
+
+EVM is designed to be easily called by AI agents and scripts:
+
+### JSON Output (`--json`)
+
+All commands support structured JSON output. stdout contains data, stderr contains errors:
+
+```bash
+# Get a variable as JSON
+evm get API_KEY --json
+# stdout: {"status": "ok", "data": {"key": "API_KEY", "value": "secret123"}}
+
+# List all variables
+evm list --json
+# stdout: {"status": "ok", "data": {"API_KEY": "secret123", "DB_URL": "..."}}
+
+# Errors go to stderr as JSON
+evm get MISSING --json
+# stderr: {"status": "error", "error": "Environment variable 'MISSING' not found", "error_code": 2}
+# exit code: 2
+```
+
+### Quiet Mode (`--quiet` / `-q`)
+
+Suppress all human-readable output. Combined with `--json`, only structured data on stdout:
+
+```bash
+evm --quiet set KEY value        # No output, exit code 0
+evm --quiet get MISSING          # No output, exit code 2
+evm --json --quiet list          # No stdout, only exit code
+```
+
+### Granular Exit Codes
+
+| Code | Meaning | Exception Type |
+|------|---------|---------------|
+| 0 | Success | — |
+| 1 | General error / cancelled | OperationCancelledError |
+| 2 | Variable not found | KeyNotFoundError, KeyAlreadyExistsError |
+| 3 | Storage error | StorageError, CorruptedStorageError, LockTimeoutError |
+| 4 | Import/export format error | ImportError, ExportError |
+| 5 | Decryption error | DecryptionError |
+| 6 | Validation/schema error | ValidationError, SchemaError |
+| 7 | Group error | GroupNotFoundError, GroupOperationError |
+| 8 | Backup error | BackupError |
+| 9 | Editor error | EditorError |
+| 10 | Command not found | CommandNotFoundError |
+
+### Agent Usage Patterns
+
+```bash
+# Read a value (parse JSON from stdout)
+VALUE=$(evm get API_KEY --json | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['value'])")
+
+# Check if variable exists
+if evm get KEY --quiet 2>/dev/null; then echo "exists"; fi
+
+# Conditional set with dry-run preview
+evm --dry-run set KEY value --json    # Preview without writing
+
+# Execute with env vars (exit code is passed through)
+evm exec -- python script.py
+echo "Script exited with: $?"
+
+# Use --env-file for isolated storage (no interference with user config)
+evm --env-file /tmp/agent_env.json set KEY value
+evm --env-file /tmp/agent_env.json --json list
 ```
 
 ## Python API

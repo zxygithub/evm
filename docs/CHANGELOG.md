@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-05-30
+
+### Agent-Friendly CLI (from AGENT_CLI_EVALUATION.md)
+
+#### JSON Output (`--json`) — P0
+- All 29 commands support `--json` flag for structured output
+- JSON envelope format: `{"status": "ok", "data": {...}}` for success, `{"status": "error", "error": "...", "error_code": N}` for errors
+- stdout = data (JSON), stderr = errors (JSON) — clean separation for agent parsing
+- New module `_json.py` with `json_output()` and `json_error()` helpers
+
+#### Granular Exit Codes — P0
+- 11 distinct exit codes mapped from exception types:
+  - 0=success, 1=general, 2=key not found, 3=storage error, 4=import/export error
+  - 5=decryption error, 6=validation/schema error, 7=group error, 8=backup error
+  - 9=editor error, 10=command not found
+- Agents can programmatically distinguish error types without parsing messages
+
+#### `exec` Uses `subprocess.run` — P1
+- Replaced `os.execvpe()` with `subprocess.run()` for better agent control
+- `exec` now returns the child process exit code (transparent passthrough)
+- Agent can capture exit codes and handle failures programmatically
+- `KeyboardInterrupt` handled gracefully (returns 130)
+
+#### Quiet Mode (`--quiet`) — P2
+- `--quiet` / `-q` flag suppresses all human-readable output
+- Combined with `--json`: only structured data on stdout, no decoration
+- Exit codes still reflect operation result even in quiet mode
+
+### Changed
+- `manager.py` `execute()` now returns `int` (subprocess exit code) instead of `None`
+- New module `_json.py` for JSON output helpers
+- Test suite expanded from 150 to 201 tests (51 new tests for JSON/exit codes/exec/quiet)
+- Version bumped to 1.9.0
+
 ## [1.8.0] - 2026-05-30
 
 ### Architecture (P1)

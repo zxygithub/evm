@@ -321,8 +321,15 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
 
     # ── 执行命令 ──────────────────────────────────────────
 
-    def execute(self, command: List[str]) -> None:
-        """使用环境变量执行命令"""
+    def execute(self, command: List[str]) -> int:
+        """使用环境变量执行命令
+
+        P1: 改用 subprocess.run 替代 os.execvpe，
+        以便 Agent 可以捕获退出码。
+
+        Returns:
+            子进程的退出码
+        """
         if not command:
             raise EVMError("No command specified")
 
@@ -331,9 +338,12 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
             env_copy[key] = str(value)
 
         try:
-            os.execvpe(command[0], command, env_copy)
+            result = subprocess.run(command, env=env_copy)
+            return result.returncode
         except FileNotFoundError:
             raise CommandNotFoundError(command[0])
+        except KeyboardInterrupt:
+            return 130
         except Exception as e:
             raise EVMError(f"Error executing command: {e}")
 
@@ -389,7 +399,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         )
 
         return {
-            'version': '1.8.0',
+            'version': '1.9.0',
             'author': 'EVM Tool',
             'license': 'MIT',
             'python': sys.version.split()[0],

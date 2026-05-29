@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import stat
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -810,7 +811,7 @@ class TestCLI(unittest.TestCase):
 
     def test_get_missing_returns_error(self):
         code = self._run(['get', 'MISSING'])
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)  # KeyNotFoundError → exit code 2
 
     def test_list(self):
         self._run(['set', 'A', '1'])
@@ -834,9 +835,9 @@ class TestCLI(unittest.TestCase):
     def test_dry_run_set(self):
         code = self._run(['--dry-run', 'set', 'KEY', 'val'])
         self.assertEqual(code, 0)
-        # 验证没有实际写入
+        # 验证没有实际写入 — KeyNotFoundError → exit code 2
         code = self._run(['get', 'KEY'])
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 2)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1191,6 +1192,513 @@ class TestCLINewCommands(unittest.TestCase):
         self._run(['setg', 'test_grp', 'K', 'v'])
         code = self._run(['--force', 'delete-group', 'test_grp'])
         self.assertEqual(code, 0)
+
+
+# ══════════════════════════════════════════════════════════════
+# P0: JSON 输出模式
+# ══════════════════════════════════════════════════════════════
+
+
+class TestJSONOutput(unittest.TestCase):
+    """测试 --json 模式：所有命令的 JSON 输出"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.env_file = os.path.join(self.temp_dir, 'json_test.json')
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir)
+
+    def _run_json(self, args):
+        """运行命令并捕获 JSON 输出"""
+        import io
+        from evm.cli import main
+        old_stdout = sys.stdout
+        sys.stdout = captured = io.StringIO()
+        try:
+            code = main(['--env-file', self.env_file, '--json'] + args)
+        except SystemExit as e:
+            code = e.code
+        finally:
+            sys.stdout = old_stdout
+        output = captured.getvalue()
+        return code, output
+
+    def _parse_json(self, output):
+        """解析 JSON 输出"""
+        import json as json_mod
+        # 取最后一行非空的输出
+        for line in reversed(output.strip().split('\n')):
+            line = line.strip()
+            if line:
+                return json_mod.loads(line)
+        return None
+
+    def test_set_json(self):
+        code, output = self._run_json(['set', 'KEY', 'value'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['status'], 'ok')
+        self.assertEqual(data['data']['key'], 'KEY')
+        self.assertEqual(data['data']['value'], 'value')
+
+    def test_get_json(self):
+        self._run_json(['set', 'API_KEY', 'secret123'])
+        code, output = self._run_json(['get', 'API_KEY'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['status'], 'ok')
+        self.assertEqual(data['data']['value'], 'secret123')
+
+    def test_get_missing_json_error(self):
+        code, output = self._run_json(['get', 'MISSING'])
+        self.assertEqual(code, 2)
+        # JSON 错误输出到 stderr，不检查 stdout
+
+    def test_list_json(self):
+        self._run_json(['set', 'A', '1'])
+        self._run_json(['set', 'B', '2'])
+        code, output = self._run_json(['list'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['status'], 'ok')
+        self.assertIn('A', data['data'])
+        self.assertIn('B', data['data'])
+
+    def test_list_empty_json(self):
+        code, output = self._run_json(['list'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['status'], 'ok')
+        self.assertEqual(data['data'], {})
+
+    def test_delete_json(self):
+        self._run_json(['set', 'KEY', 'val'])
+        code, output = self._run_json(['delete', 'KEY'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertTrue(data['data']['deleted'])
+
+    def test_search_json(self):
+        self._run_json(['set', 'API_KEY', '123'])
+        self._run_json(['set', 'API_URL', 'http://x'])
+        code, output = self._run_json(['search', 'API'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertIn('API_KEY', data['data'])
+        self.assertIn('API_URL', data['data'])
+
+    def test_info_json(self):
+        code, output = self._run_json(['info'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertIn('version', data['data'])
+        self.assertIn('storage_path', data['data'])
+
+    def test_groups_json(self):
+        self._run_json(['setg', 'dev', 'KEY', 'val'])
+        code, output = self._run_json(['groups'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertIn('dev', data['data']['groups'])
+
+    def test_clear_json(self):
+        self._run_json(['set', 'A', '1'])
+        code, output = self._run_json(['--force', 'clear'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['data']['cleared'], 1)
+
+    def test_rename_json(self):
+        self._run_json(['set', 'OLD', 'val'])
+        code, output = self._run_json(['rename', 'OLD', 'NEW'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['data']['old_key'], 'OLD')
+        self.assertEqual(data['data']['new_key'], 'NEW')
+
+    def test_copy_json(self):
+        self._run_json(['set', 'SRC', 'val'])
+        code, output = self._run_json(['copy', 'SRC', 'DST'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['data']['src_key'], 'SRC')
+        self.assertEqual(data['data']['dst_key'], 'DST')
+
+    def test_expand_json(self):
+        self._run_json(['set', 'HOST', 'localhost'])
+        self._run_json(['set', 'URL', 'http://{{HOST}}:3000'])
+        code, output = self._run_json(['expand', 'URL'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['data']['expanded'], 'http://localhost:3000')
+
+    def test_diff_json(self):
+        self._run_json(['set', 'A', '1'])
+        backup = os.path.join(self.temp_dir, 'backup.json')
+        from evm.cli import main
+        main(['--env-file', self.env_file, 'backup', '--file', backup])
+        self._run_json(['set', 'B', '2'])
+        code, output = self._run_json(['diff', backup])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertIn('B', data['data']['added'])
+
+    def test_history_json(self):
+        self._run_json(['set', 'A', '1'])
+        code, output = self._run_json(['history'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertIsInstance(data['data'], list)
+        self.assertTrue(len(data['data']) >= 1)
+
+    def test_validate_json(self):
+        self._run_json(['set', 'URL', 'https://example.com'])
+        self._run_json(['schema', 'set', 'URL', '--format', 'url'])
+        code, output = self._run_json(['validate', 'URL'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertTrue(data['data']['valid'])
+
+    def test_schema_set_json(self):
+        code, output = self._run_json(['schema', 'set', 'URL', '--format', 'url'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['data']['key'], 'URL')
+
+    def test_schema_list_json(self):
+        self._run_json(['schema', 'set', 'URL', '--format', 'url'])
+        code, output = self._run_json(['schema', 'list'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertIn('URL', data['data'])
+
+    def test_export_json_mode(self):
+        self._run_json(['set', 'K', 'v'])
+        code, output = self._run_json(['export', '--format', 'env'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertIn('message', data['data'])
+
+    def test_load_json_mode(self):
+        import_file = os.path.join(self.temp_dir, 'import.json')
+        with open(import_file, 'w') as f:
+            json.dump({'LOADED': 'yes'}, f)
+        code, output = self._run_json(['load', import_file])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertIn('message', data['data'])
+
+    def test_backup_json_mode(self):
+        self._run_json(['set', 'K', 'v'])
+        code, output = self._run_json(['backup'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertIn('message', data['data'])
+
+    def test_setg_json(self):
+        code, output = self._run_json(['setg', 'dev', 'KEY', 'val'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['data']['group'], 'dev')
+
+    def test_getg_json(self):
+        self._run_json(['setg', 'dev', 'KEY', 'val'])
+        code, output = self._run_json(['getg', 'dev', 'KEY'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['data']['value'], 'val')
+
+    def test_move_group_json(self):
+        self._run_json(['set', 'KEY', 'val'])
+        code, output = self._run_json(['move-group', 'KEY', 'prod'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['data']['target_group'], 'prod')
+
+    def test_loadmemory_json(self):
+        self._run_json(['set', 'MEM_VAR', 'mem_val'])
+        code, output = self._run_json(['loadmemory'])
+        self.assertEqual(code, 0)
+        data = self._parse_json(output)
+        self.assertEqual(data['data']['loaded'], 1)
+        # 清理
+        if 'EVM:MEM_VAR' in os.environ:
+            del os.environ['EVM:MEM_VAR']
+
+    def test_completion_not_json(self):
+        """completion 命令不受 --json 影响"""
+        code, output = self._run_json(['completion', 'bash'])
+        self.assertEqual(code, 0)
+        self.assertIn('_evm_completions', output)
+
+
+# ══════════════════════════════════════════════════════════════
+# P0: 细化退出码
+# ══════════════════════════════════════════════════════════════
+
+
+class TestExitCodes(unittest.TestCase):
+    """测试细化退出码"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.env_file = os.path.join(self.temp_dir, 'exit_test.json')
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir)
+
+    def _run(self, args):
+        from evm.cli import main
+        return main(['--env-file', self.env_file] + args)
+
+    def test_success_code_0(self):
+        code = self._run(['set', 'K', 'v'])
+        self.assertEqual(code, 0)
+
+    def test_key_not_found_code_2(self):
+        code = self._run(['get', 'MISSING'])
+        self.assertEqual(code, 2)
+
+    def test_key_already_exists_code_2(self):
+        self._run(['set', 'A', '1'])
+        self._run(['set', 'B', '2'])
+        code = self._run(['rename', 'A', 'B'])
+        self.assertEqual(code, 2)
+
+    def test_group_not_found_code_7(self):
+        code = self._run(['--force', 'delete-group', 'nonexistent'])
+        self.assertEqual(code, 7)
+
+    def test_group_operation_code_7(self):
+        code = self._run(['--force', 'delete-group', 'default'])
+        self.assertEqual(code, 7)
+
+    def test_backup_error_code_8(self):
+        code = self._run(['restore', '/nonexistent/file.json'])
+        self.assertEqual(code, 8)
+
+    def test_schema_error_code_6(self):
+        code = self._run(['validate', 'NO_SCHEMA'])
+        self.assertEqual(code, 6)
+
+    def test_decryption_error_code_5(self):
+        self._run(['set', 'PLAIN', 'value'])
+        from evm.cli import main
+        code = main(['--env-file', self.env_file, 'get', '--secret', 'PLAIN'])
+        self.assertEqual(code, 5)
+
+    def test_command_not_found_code_10(self):
+        self._run(['set', 'K', 'v'])
+        code = self._run(['exec', 'nonexistent_command_xyz'])
+        self.assertEqual(code, 10)
+
+    def test_import_error_code_4(self):
+        code = self._run(['load', '/nonexistent/file.json'])
+        self.assertEqual(code, 4)
+
+
+# ══════════════════════════════════════════════════════════════
+# P1: exec 使用 subprocess.run
+# ══════════════════════════════════════════════════════════════
+
+
+class TestExecSubprocess(unittest.TestCase):
+    """测试 exec 命令使用 subprocess.run"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.env_file = os.path.join(self.temp_dir, 'exec_test.json')
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir)
+
+    def _run(self, args):
+        from evm.cli import main
+        return main(['--env-file', self.env_file] + args)
+
+    def test_exec_returns_child_exit_code(self):
+        """exec 应返回子进程的退出码"""
+        self._run(['set', 'EVM_TEST_VAR', 'hello'])
+        code = self._run(['exec', '--', 'sh', '-c', 'exit 0'])
+        self.assertEqual(code, 0)
+
+    def test_exec_nonzero_exit_code(self):
+        """exec 应透传非零退出码"""
+        self._run(['set', 'EVM_TEST_VAR', 'hello'])
+        code = self._run(['exec', '--', 'sh', '-c', 'exit 42'])
+        self.assertEqual(code, 42)
+
+    def test_exec_env_vars_available(self):
+        """exec 执行时环境变量应对子进程可用"""
+        self._run(['set', 'EVM_EXEC_TEST', 'exec_value'])
+        code = self._run([
+            'exec', '--', 'sh', '-c',
+            'test "$EVM_EXEC_TEST" = "exec_value"',
+        ])
+        self.assertEqual(code, 0)
+
+    def test_exec_command_not_found(self):
+        """exec 找不到命令应返回 10"""
+        code = self._run(['exec', '--', 'nonexistent_cmd_xyz_123'])
+        self.assertEqual(code, 10)
+
+    def test_exec_returns_int(self):
+        """execute() 应返回 int"""
+        from evm.manager import EnvironmentManager
+        mgr = EnvironmentManager(self.env_file)
+        result = mgr.execute(['sh', '-c', 'exit 0'])
+        self.assertIsInstance(result, int)
+        self.assertEqual(result, 0)
+
+
+# ══════════════════════════════════════════════════════════════
+# P2: --quiet 模式
+# ══════════════════════════════════════════════════════════════
+
+
+class TestQuietMode(unittest.TestCase):
+    """测试 --quiet 模式"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.env_file = os.path.join(self.temp_dir, 'quiet_test.json')
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir)
+
+    def _run_quiet(self, args, capture_stdout=True):
+        """运行命令并捕获输出"""
+        import io
+        from evm.cli import main
+        old_stdout = sys.stdout
+        if capture_stdout:
+            sys.stdout = captured = io.StringIO()
+        try:
+            code = main(['--env-file', self.env_file, '--quiet'] + args)
+        except SystemExit as e:
+            code = e.code
+        finally:
+            if capture_stdout:
+                sys.stdout = old_stdout
+        output = captured.getvalue() if capture_stdout else ''
+        return code, output
+
+    def _run_quiet_json(self, args):
+        """运行 --json --quiet 命令"""
+        import io
+        from evm.cli import main
+        old_stdout = sys.stdout
+        sys.stdout = captured = io.StringIO()
+        try:
+            code = main(['--env-file', self.env_file, '--json', '--quiet'] + args)
+        except SystemExit as e:
+            code = e.code
+        finally:
+            sys.stdout = old_stdout
+        return code, captured.getvalue()
+
+    def test_quiet_set_no_output(self):
+        code, output = self._run_quiet(['set', 'KEY', 'value'])
+        self.assertEqual(code, 0)
+        self.assertEqual(output.strip(), '')
+
+    def test_quiet_get_still_outputs_value(self):
+        """quiet 模式下 get 不输出（由 --json 控制）"""
+        self._run_quiet(['set', 'KEY', 'value'])
+        code, output = self._run_quiet(['get', 'KEY'])
+        self.assertEqual(code, 0)
+        # quiet 模式下不输出人类文本
+        self.assertEqual(output.strip(), '')
+
+    def test_quiet_list_no_output(self):
+        self._run_quiet(['set', 'A', '1'])
+        code, output = self._run_quiet(['list'])
+        self.assertEqual(code, 0)
+        self.assertEqual(output.strip(), '')
+
+    def test_quiet_json_set_no_stdout(self):
+        """--json --quiet 应不输出到 stdout"""
+        code, output = self._run_quiet_json(['set', 'KEY', 'value'])
+        self.assertEqual(code, 0)
+        self.assertEqual(output.strip(), '')
+
+    def test_quiet_error_still_has_exit_code(self):
+        """quiet 模式下错误仍有正确退出码"""
+        code, output = self._run_quiet(['get', 'MISSING'])
+        self.assertEqual(code, 2)
+
+    def test_quiet_clear_no_output(self):
+        self._run_quiet(['set', 'A', '1'])
+        code, output = self._run_quiet(['--force', 'clear'])
+        self.assertEqual(code, 0)
+        self.assertEqual(output.strip(), '')
+
+    def test_quiet_info_no_output(self):
+        code, output = self._run_quiet(['info'])
+        self.assertEqual(code, 0)
+        self.assertEqual(output.strip(), '')
+
+
+# ══════════════════════════════════════════════════════════════
+# JSON 错误输出
+# ══════════════════════════════════════════════════════════════
+
+
+class TestJSONErrorOutput(unittest.TestCase):
+    """测试 --json 模式下的错误输出"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.env_file = os.path.join(self.temp_dir, 'json_err_test.json')
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir)
+
+    def _run_json_err(self, args):
+        """运行命令并捕获 stderr JSON 输出"""
+        import io
+        from evm.cli import main
+        old_stderr = sys.stderr
+        sys.stderr = captured = io.StringIO()
+        try:
+            code = main(['--env-file', self.env_file, '--json'] + args)
+        except SystemExit as e:
+            code = e.code
+        finally:
+            sys.stderr = old_stderr
+        return code, captured.getvalue()
+
+    def _parse_json(self, output):
+        import json as json_mod
+        for line in reversed(output.strip().split('\n')):
+            line = line.strip()
+            if line:
+                return json_mod.loads(line)
+        return None
+
+    def test_json_error_key_not_found(self):
+        code, stderr = self._run_json_err(['get', 'MISSING'])
+        self.assertEqual(code, 2)
+        data = self._parse_json(stderr)
+        self.assertIsNotNone(data)
+        self.assertEqual(data['status'], 'error')
+        self.assertEqual(data['error_code'], 2)
+        self.assertIn('MISSING', data['error'])
+
+    def test_json_error_group_not_found(self):
+        code, stderr = self._run_json_err(['--force', 'delete-group', 'nope'])
+        self.assertEqual(code, 7)
+        data = self._parse_json(stderr)
+        self.assertIsNotNone(data)
+        self.assertEqual(data['error_code'], 7)
+
+    def test_json_error_schema_not_found(self):
+        code, stderr = self._run_json_err(['validate', 'NO_SCHEMA'])
+        self.assertEqual(code, 6)
+        data = self._parse_json(stderr)
+        self.assertIsNotNone(data)
+        self.assertEqual(data['error_code'], 6)
 
 
 if __name__ == '__main__':

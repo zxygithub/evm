@@ -26,9 +26,9 @@ def main():
     
     # 2. 使用 EVM 设置一些变量
     print("2. 使用 EVM 设置示例变量:")
-    subprocess.run([sys.executable, '-m', 'evm.python', 'set', 'DEMO_API_KEY', 'sk-demo-12345'], 
+    subprocess.run([sys.executable, '-m', 'evm', 'set', 'DEMO_API_KEY', 'sk-demo-12345'], 
                    capture_output=True)
-    subprocess.run([sys.executable, '-m', 'evm.python', 'set', 'DEMO_DATABASE_URL', 'postgres://localhost:5432/demo'],
+    subprocess.run([sys.executable, '-m', 'evm', 'set', 'DEMO_DATABASE_URL', 'postgres://localhost:5432/demo'],
                    capture_output=True)
     print("   ✓ 已设置 DEMO_API_KEY 和 DEMO_DATABASE_URL")
     print()
@@ -45,7 +45,7 @@ print("   加载前:")
 print(f"     EVM:DEMO_API_KEY: {os.environ.get('EVM:DEMO_API_KEY', 'NOT SET')}")
 
 # 导入 EVM 并加载到内存
-from evm.python.main import EnvironmentManager
+from evm.manager import EnvironmentManager
 mgr = EnvironmentManager()
 mgr.load_to_memory()  # 默认添加 EVM: 前缀
 
@@ -67,7 +67,7 @@ print(f"     EVM:DEMO_DATABASE_URL: {os.environ.get('EVM:DEMO_DATABASE_URL', 'NO
     
     test_script_no_prefix = '''
 import os
-from evm.python.main import EnvironmentManager
+from evm.manager import EnvironmentManager
 
 mgr = EnvironmentManager()
 mgr.load_to_memory(add_evm_prefix=False)  # 不添加前缀
@@ -88,7 +88,7 @@ for key in sorted(os.environ.keys()):
     
     test_script_filter = '''
 import os
-from evm.python.main import EnvironmentManager
+from evm.manager import EnvironmentManager
 
 mgr = EnvironmentManager()
 
@@ -108,7 +108,7 @@ for key in sorted(os.environ.keys()):
     
     # 6. 使用 evm exec 运行命令
     print("6. 使用 'evm exec' 运行命令（自动加载环境变量）:")
-    result = subprocess.run([sys.executable, '-m', 'evm.python', 'exec', '--',
+    result = subprocess.run([sys.executable, '-m', 'evm', 'exec', '--',
                             sys.executable, '-c', 
                             "import os; print(f\"   API_KEY: {os.environ.get('API_KEY', 'NOT SET')[:30]}...\")"],
                            capture_output=True, text=True)
@@ -119,9 +119,9 @@ for key in sorted(os.environ.keys()):
     
     # 7. 清理
     print("7. 清理演示变量:")
-    subprocess.run([sys.executable, '-m', 'evm.python', 'delete', 'DEMO_API_KEY'],
+    subprocess.run([sys.executable, '-m', 'evm', 'delete', 'DEMO_API_KEY'],
                    capture_output=True)
-    subprocess.run([sys.executable, '-m', 'evm.python', 'delete', 'DEMO_DATABASE_URL'],
+    subprocess.run([sys.executable, '-m', 'evm', 'delete', 'DEMO_DATABASE_URL'],
                    capture_output=True)
     print("   ✓ 已删除演示变量")
     print()

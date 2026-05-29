@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-05-30
+
+### Security (P0)
+- **Shell export escaping**: `export` to `.sh` format now uses `shlex.quote()` to prevent command injection via `$(...)`, backticks, etc.
+- **File permissions**: Storage file (`env.json`) and backups now set to `chmod 600` (owner read/write only)
+- **No more silent error swallowing**: Corrupted JSON files raise `CorruptedStorageError`, permission errors raise `StorageError`
+
+### Architecture (P1)
+- **Module split**: Replaced single `main.py` (832 lines) with modular structure:
+  - `cli.py` — argparse parsing + command dispatch
+  - `manager.py` — pure business logic (no print/sys.exit)
+  - `formatters.py` — terminal output formatting
+  - `exceptions.py` — custom exception hierarchy (`EVMError` base class)
+- **Exception-based error handling**: Business methods raise typed exceptions instead of `sys.exit(1)`, making the library safe for programmatic use
+- **Atomic writes**: Storage uses temp file + rename to prevent data corruption
+- **File locking**: Uses `fcntl.flock` for exclusive write access
+
+### Features (P2)
+- **`evm edit KEY`**: Edit variable value in `$EDITOR` (or `$VISUAL`, falls back to `vi`)
+- **`evm info`**: Display tool metadata (version, storage path, variable/group counts, secrets count)
+- **`evm expand KEY`**: Expand `{{OTHER_VAR}}` template references in variable values
+- **`evm set --secret KEY VALUE` / `evm get --secret KEY`**: Encrypt/decrypt sensitive variables using machine-key XOR encryption
+- **`evm diff FILE`**: Compare current state with a backup file (shows added/removed/changed)
+- **`--dry-run`**: Global flag to preview changes without writing (supported by set, delete, clear, rename, copy, export, load, setg, deleteg, delete-group, move-group, set --secret)
+
+### Changed
+- Entry point updated to `evm.cli:main`
+- `main.py` removed; all code now in `cli.py`, `manager.py`, `formatters.py`, `exceptions.py`
+- Test suite expanded from 39 to 101 tests covering all new features
+- Version bumped to 1.7.0
+
+## [1.6.0] - 2026-05-30
+
+### Removed
+- **Removed C implementation**: Deleted the entire C codebase (`evm/c/` directory)
+- **Removed pre-built binaries**: Deleted `bin/` directory (macOS pkg, tar.gz, executable)
+- Dropped dual-language maintenance to focus on a single Python implementation
+
+### Changed
+- **Project structure flattened**: Moved `evm/python/main.py` → `evm/main.py`, removed `evm/python/` subdirectory
+- Updated entry point from `evm.python.main:main` to `evm.main:main`
+- Updated all import paths (`from evm.main import ...`)
+- Updated Makefile: removed C build targets (`build-macos`, `install-macos`)
+- Updated README: removed all C version references and binary installation instructions
+- Updated examples to use new import paths
+
 ## [1.5.0] - 2025-02-07
 
 ### Changed

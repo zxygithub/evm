@@ -1,8 +1,9 @@
 """
 EVM - Environment Variable Manager
-Environment variable management tool with both Python and C implementations.
+A command-line tool for managing environment variables.
 """
 
-from evm.python import __version__, __author__
+__version__ = "1.7.0"
+__author__ = "EVM Tool"
 
 __all__ = ['__version__', '__author__']

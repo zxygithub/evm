@@ -8,7 +8,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="evm-cli",
-    version="1.5.0",
+    version="1.7.0",
     author="EVM Tool",
     author_email="evm@example.com",
     description="A command-line tool for managing environment variables",
@@ -20,7 +20,8 @@ setup(
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
+        "Operating System :: MacOS",
+        "Operating System :: POSIX :: Linux",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
@@ -38,7 +39,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "evm=evm.python.main:main",
+            "evm=evm.cli:main",
         ],
     },
     include_package_data=True,

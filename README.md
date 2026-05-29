@@ -2,7 +2,7 @@
 
 A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
-**Version**: 1.5.0
+**Version**: 1.7.0
 
 ## Features
 
@@ -13,36 +13,32 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 - ✅ **Groups**: Namespace-based organization
 - ✅ **Execute**: Run commands with custom environment
 - ✅ **Load to Memory**: Sync variables to system environment
-- ✅ **Native macOS/Linux**: Optimized for Unix systems
+- ✅ **Secrets**: Encrypted storage for sensitive variables
+- ✅ **Templates**: `{{VAR}}` reference expansion
+- ✅ **Diff**: Compare current state with backups
+- ✅ **Dry-run**: Preview changes before writing
+- ✅ **Secure**: Shell-safe export, chmod 600, atomic writes
+- ✅ **Pure Python**: No external dependencies, Python 3.6+
 
 ## Project Structure
 
 ```
 evm/
-├── bin/                      # Pre-built binaries
-│   ├── evm                   # macOS/Linux executable
-│   ├── evm-1.5.0-macos.pkg  # macOS PKG installer
-│   ├── evm-cli-macos.tar.gz # macOS distribution
-│   └── evm-installer-macos.tar.gz  # macOS installer with script
 ├── evm/
-│   ├── c/                    # C implementation
-│   │   ├── main.c            # Main entry
-│   │   ├── core.c            # Core functionality
-│   │   ├── io.c              # Import/Export
-│   │   ├── list.c            # List/Search
-│   │   ├── group.c           # Group management
-│   │   ├── utils.c           # Utilities
-│   │   ├── evm.h             # Header file
-│   │   ├── Makefile          # Build configuration
-│   │   └── ...
-│   └── python/               # Python implementation
-│       ├── main.py
-│       ├── __init__.py
-│       └── __main__.py
+│   ├── __init__.py           # Package init, version info
+│   ├── __main__.py           # Module entry point
+│   ├── cli.py                # CLI parsing and command dispatch
+│   ├── manager.py            # Core business logic
+│   ├── formatters.py         # Terminal output formatting
+│   └── exceptions.py         # Custom exception hierarchy
 ├── examples/                 # Example scripts
-├── tests/                    # Test suite
+├── tests/                    # Test suite (101 tests)
+│   ├── test_main.py          # Unit + integration tests
+│   ├── run_tests.py          # Integration test runner
+│   └── test_case/            # Test configuration files
 ├── docs/
-│   └── CHANGELOG.md
+│   ├── CHANGELOG.md          # Version history
+│   └── ANALYSIS.md           # Project analysis report
 ├── README.md                 # This file
 ├── LICENSE                   # MIT License
 ├── Makefile                  # Build automation
@@ -52,45 +48,24 @@ evm/
 
 ## Quick Start
 
-### Option 1: Pre-built Binaries (Recommended)
+### Installation
 
-**macOS PKG Installer:**
 ```bash
-# Double-click to install
-open bin/evm-1.5.0-macos.pkg
+# From source (development mode)
+pip install -e .
 
-# Or install via command line
-sudo installer -pkg bin/evm-1.5.0-macos.pkg -target /
-```
+# For current user only
+pip install --user -e .
 
-**Manual Installation:**
-```bash
-# Using tar.gz with install script
-tar -xzf bin/evm-installer-macos.tar.gz
-cd evm-installer-macos
-./install.sh
-
-# Or simple binary copy
-sudo cp bin/evm /usr/local/bin/
-sudo chmod +x /usr/local/bin/evm
-
-# Verify
+# Verify installation
 evm --version
 evm --help
 ```
 
-### Option 2: Build from Source
+### Run as Module
 
-**C Version:**
 ```bash
-cd evm/c
-make
-sudo make install-local  # Install to /usr/local/bin
-```
-
-**Python Version:**
-```bash
-pip install -e .
+python -m evm --help
 ```
 
 ## Usage
@@ -153,6 +128,7 @@ evm load config.env
 # Import with options
 evm load config.json --replace    # Replace existing
 evm load config.json --group dev  # Add to group
+evm load config.json --nest       # Import nested JSON (first-level keys as groups)
 ```
 
 ### Backup & Restore
@@ -220,49 +196,88 @@ Use custom storage:
 evm --env-file /path/to/custom.json list
 ```
 
+### Secrets (Encrypted Variables)
+
+```bash
+# Store an encrypted secret
+evm set --secret DB_PASSWORD "super_secret_password"
+
+# Retrieve and decrypt
+evm get --secret DB_PASSWORD
+```
+
+### Template Expansion
+
+```bash
+# Use {{VAR}} references
+evm set API_HOST "api.example.com"
+evm set API_URL "https://{{API_HOST}}/v1"
+
+# Expand templates
+evm expand API_URL   # → https://api.example.com/v1
+```
+
+### Diff
+
+```bash
+# Compare current state with a backup
+evm diff backup_20260530_120000.json
+```
+
+### Dry-run
+
+```bash
+# Preview changes without writing
+evm --dry-run set NEW_KEY value
+evm --dry-run delete EXISTING_KEY
+evm --dry-run clear
+```
+
+## Python API
+
+EVM can also be used as a Python library:
+
+```python
+from evm.manager import EnvironmentManager
+from evm.exceptions import EVMError, KeyNotFoundError
+from evm.formatters import print_vars_table
+
+manager = EnvironmentManager()
+manager.set('API_KEY', 'secret123')
+value = manager.get('API_KEY')
+manager.set_grouped('dev', 'DEBUG', 'true')
+manager.set_secret('DB_PASS', 'encrypted_value')
+
+# List variables
+print_vars_table(manager.list_vars())
+
+# Handle errors properly
+try:
+    manager.get('MISSING')
+except KeyNotFoundError as e:
+    print(f"Not found: {e.key}")
+```
+
 ## Development
 
-### Building
-
-**C Version:**
 ```bash
-cd evm/c
-
-# Build
-make
-
-# Install to bin/
-make install
-
-# Create distribution package
-make dist-macos
+# Install for development
+pip install -e .
 
 # Run tests
 make test
 
-# Clean
-make clean
-```
+# Run tests with coverage
+make test-coverage
 
-**Python Version:**
-```bash
-# Run as module
-python -m evm.python --help
+# Lint
+make lint
 
-# Install for development
-pip install -e .
-```
+# Format code
+make format
 
-### Testing
-
-```bash
-# Python tests
-make test
-python -m pytest tests/ -v
-
-# C version tests
-cd evm/c
-make test
+# Run demo
+make demo
 ```
 
 ## Examples
@@ -280,20 +295,6 @@ evm export --format env -o .env
 
 # Run application
 evm exec -- npm start
-```
-
-### Production Deployment
-
-```bash
-# Backup before changes
-evm backup
-
-# Set production values
-evm setg prod NODE_ENV production
-evm setg prod API_URL https://api.example.com
-
-# Export deployment script
-evm export --format sh -o deploy.sh
 ```
 
 ### Multi-Environment Management
@@ -314,16 +315,8 @@ evm export --group dev --format env
 
 ## Requirements
 
-- **C Version**: C99 compiler (gcc/clang)
-- **Python Version**: Python 3.6+
-- **No runtime dependencies**
-
-## Platform Support
-
-| Platform | Binary Size | Format |
-|----------|-------------|--------|
-| macOS | ~69KB | Mach-O |
-| Linux | ~69KB | ELF |
+- **Python 3.6+**
+- **No external dependencies** (uses only standard library)
 
 ## License
 

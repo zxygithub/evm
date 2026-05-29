@@ -6,16 +6,42 @@ EVM 导入导出 Mixin
 """
 
 import json
+import re
 import shlex
 from pathlib import Path
 from typing import Dict, Optional
 
+from ._schema import VALID_KEY_PATTERN
 from .exceptions import (
     BackupError,
     ExportError,
     GroupNotFoundError,
-    ImportError_,
+    ImportFailedError,
 )
+
+
+def _parse_env_value(raw: str) -> str:
+    """#8: 解析 .env 值，正确处理平衡引号
+
+    支持: "double quoted", 'single quoted', unquoted
+    不平衡引号（如 "value'）按字面量处理。
+    """
+    stripped = raw.strip()
+    if len(stripped) >= 2:
+        if stripped[0] == '"' and stripped[-1] == '"':
+            # 平衡双引号：去掉引号，处理转义
+            inner = stripped[1:-1]
+            return inner.replace('\\"', '"').replace('\\\\', '\\')
+        if stripped[0] == "'" and stripped[-1] == "'":
+            # 平衡单引号：去掉引号，不处理转义
+            return stripped[1:-1]
+    # 无引号或不平衡：原样返回（仅去除首尾空白）
+    return stripped
+
+
+def _validate_key_name(key: str) -> bool:
+    """#9: 校验环境变量 key 名是否安全"""
+    return bool(VALID_KEY_PATTERN.match(key))
 
 
 class IOMixin:
@@ -44,38 +70,47 @@ class IOMixin:
             with open(path, 'r', encoding='utf-8') as f:
                 content = f.read(100)
                 return 'json' if content.strip().startswith('{') else 'env'
-        except Exception:
+        except OSError:
             return 'json'
 
     def _load_json_file(self, path: Path) -> dict:
         """加载 JSON 文件
 
         Raises:
-            ImportError_: JSON 解析失败
+            ImportFailedError: JSON 解析失败
         """
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             if not isinstance(data, dict):
-                raise ImportError_(
+                raise ImportFailedError(
                     "Invalid JSON format: expected a dictionary",
                     str(path),
                 )
             return data
         except json.JSONDecodeError as e:
-            raise ImportError_(f"JSON parse error: {e}", str(path))
+            raise ImportFailedError(
+                f"JSON parse error: {e}", str(path)
+            ) from e
 
     def _load_env_file(self, path: Path) -> Dict[str, str]:
-        """加载 .env 文件"""
+        """加载 .env 文件
+
+        #8: 使用平衡引号解析
+        #9: 校验 key 名安全性
+        """
         loaded = {}
         with open(path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#'):
                     if '=' in line:
-                        key, value = line.split('=', 1)
+                        key, raw_value = line.split('=', 1)
                         key = key.strip()
-                        value = value.strip().strip("'").strip('"')
+                        # #9: 校验 key 名
+                        if not _validate_key_name(key):
+                            continue  # 跳过不安全的 key
+                        value = _parse_env_value(raw_value)
                         loaded[key] = value
         return loaded
 
@@ -152,17 +187,28 @@ class IOMixin:
             elif format_type == 'env':
                 with open(output_path, 'w', encoding='utf-8') as f:
                     for key, value in sorted(export_vars.items()):
-                        f.write(f'{key}={value}\n')
+                        # #13: 值含换行时用双引号包裹
+                        if '\n' in str(value) or '\r' in str(value):
+                            escaped = str(value).replace(
+                                '\\', '\\\\'
+                            ).replace('"', '\\"').replace('\n', '\\n')
+                            f.write(f'{key}="{escaped}"\n')
+                        else:
+                            f.write(f'{key}={value}\n')
             elif format_type == 'sh':
                 with open(output_path, 'w', encoding='utf-8') as f:
                     f.write('#!/bin/bash\n\n')
                     for key, value in sorted(export_vars.items()):
-                        f.write(f'export {key}={shlex.quote(value)}\n')
+                        # #9: key 也用 shlex.quote 转义
+                        safe_key = shlex.quote(key)
+                        f.write(
+                            f'export {safe_key}={shlex.quote(str(value))}\n'
+                        )
             else:
                 raise ExportError(f"Unsupported format: {format_type}")
             return f"Environment variables exported to: {output_path}"
-        except IOError as e:
-            raise ExportError(f"Error exporting: {e}")
+        except OSError as e:
+            raise ExportError(f"Error exporting: {e}") from e
 
     # ── 导入（重构后）────────────────────────────────────
 
@@ -178,7 +224,9 @@ class IOMixin:
         """从文件导入环境变量"""
         input_path = Path(input_file)
         if not input_path.exists():
-            raise ImportError_(f"File not found: {input_file}", input_file)
+            raise ImportFailedError(
+                f"File not found: {input_file}", input_file
+            )
 
         try:
             fmt = self._detect_format(input_path, format_type)
@@ -201,7 +249,9 @@ class IOMixin:
             elif fmt == 'env':
                 loaded_vars = self._load_env_file(input_path)
             else:
-                raise ImportError_(f"Unsupported format: {fmt}", input_file)
+                raise ImportFailedError(
+                    f"Unsupported format: {fmt}", input_file
+                )
 
             # 添加分组前缀
             if group and not nest:
@@ -250,12 +300,16 @@ class IOMixin:
                 f"Loaded {len(loaded_vars)} variables"
             )
 
-        except (ImportError_, ExportError):
+        except (ImportFailedError, ExportError):
             raise
         except (json.JSONDecodeError, ValueError) as e:
-            raise ImportError_(f"Error loading: {e}", input_file)
-        except IOError as e:
-            raise ImportError_(f"IO error loading: {e}", input_file)
+            raise ImportFailedError(
+                f"Error loading: {e}", input_file
+            ) from e
+        except OSError as e:
+            raise ImportFailedError(
+                f"IO error loading: {e}", input_file
+            ) from e
 
     # ── 备份恢复 ──────────────────────────────────────────
 
@@ -281,8 +335,8 @@ class IOMixin:
                 json.dump(backup_data, f, indent=2, ensure_ascii=False)
             os.chmod(str(backup_file), 0o600)
             return f"Backup created: {backup_file}"
-        except IOError as e:
-            raise BackupError(f"Error creating backup: {e}")
+        except OSError as e:
+            raise BackupError(f"Error creating backup: {e}") from e
 
     def restore(self, backup_file: str, merge: bool = False) -> str:
         """从备份恢复"""
@@ -311,8 +365,10 @@ class IOMixin:
             if timestamp:
                 msg += f"\nBackup timestamp: {timestamp}"
             return msg
-        except (json.JSONDecodeError, IOError) as e:
-            raise BackupError(f"Error restoring from backup: {e}")
+        except (json.JSONDecodeError, OSError) as e:
+            raise BackupError(
+                f"Error restoring from backup: {e}"
+            ) from e
 
     # ── Diff 比较 ─────────────────────────────────────────
 
@@ -332,8 +388,8 @@ class IOMixin:
                 backup_vars = backup_data
             else:
                 raise BackupError("Invalid file format for diff")
-        except (json.JSONDecodeError, IOError) as e:
-            raise BackupError(f"Error reading file: {e}")
+        except (json.JSONDecodeError, OSError) as e:
+            raise BackupError(f"Error reading file: {e}") from e
 
         current = self._env_vars
         added = {k: v for k, v in current.items() if k not in backup_vars}

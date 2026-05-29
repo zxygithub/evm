@@ -35,7 +35,7 @@ class CorruptedStorageError(StorageError):
     pass
 
 
-class PermissionError_(StorageError):
+class StoragePermissionError(StorageError):
     """存储文件权限不足"""
     pass
 
@@ -56,7 +56,7 @@ class ExportError(EVMError):
     pass
 
 
-class ImportError_(EVMError):
+class ImportFailedError(EVMError):
     """导入失败"""
     def __init__(self, message: str, file_path: str = None):
         self.file_path = file_path
@@ -120,16 +120,21 @@ class OperationCancelledError(EVMError):
     pass
 
 
+# 向后兼容别名（将在未来版本移除）
+PermissionError_ = StoragePermissionError
+ImportError_ = ImportFailedError
+
+
 __all__ = [
     'EVMError',
     'KeyNotFoundError',
     'KeyAlreadyExistsError',
     'StorageError',
     'CorruptedStorageError',
-    'PermissionError_',
+    'StoragePermissionError',
     'LockTimeoutError',
     'ExportError',
-    'ImportError_',
+    'ImportFailedError',
     'CommandNotFoundError',
     'GroupNotFoundError',
     'GroupOperationError',
@@ -139,4 +144,7 @@ __all__ = [
     'ValidationError',
     'SchemaError',
     'OperationCancelledError',
+    # 向后兼容
+    'PermissionError_',
+    'ImportError_',
 ]

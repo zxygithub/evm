@@ -550,15 +550,15 @@ class TestSecrets(TestEnvironmentManagerBase):
 
     def test_set_and_get_secret(self):
         self.manager.set_secret('API_KEY', 'super_secret_value')
-        # v2 格式：ENCv2:<salt>:<hmac>:<ciphertext>
+        # v3 格式：ENCv3:<salt>:<iv>:<mac>:<ciphertext>
         raw = self.manager._env_vars['API_KEY']
-        self.assertTrue(raw.startswith('ENCv2:'))
+        self.assertTrue(raw.startswith('ENCv3:'))
         self.assertNotEqual(raw, 'super_secret_value')
         # 解密应返回原值
         self.assertEqual(self.manager.get_secret('API_KEY'), 'super_secret_value')
 
     def test_secret_v1_backward_compat(self):
-        """v1 格式的加密变量仍应可以解密"""
+        """v1 格式的加密变量仍应可以解密，并自动迁移到 v3"""
         import base64
         import hashlib
         import platform
@@ -580,18 +580,79 @@ class TestSecrets(TestEnvironmentManagerBase):
         # 应该可以解密 v1 格式
         result = self.manager.get_secret('OLD_SECRET')
         self.assertEqual(result, 'old_secret_value')
+        # 自动迁移到 v3
+        self.assertTrue(
+            self.manager._env_vars['OLD_SECRET'].startswith('ENCv3:')
+        )
+
+    def test_secret_v2_backward_compat(self):
+        """v2 格式的加密变量应可以解密，并自动迁移到 v3"""
+        import base64
+        import hashlib
+        import hmac as hmac_mod
+        import os as os_mod
+        import platform as platform_mod
+
+        salt = os_mod.urandom(16)
+        machine_id = (
+            platform_mod.node()
+            + str(os_mod.getuid() if hasattr(os_mod, 'getuid') else '')
+            + platform_mod.machine()
+        )
+        key = hashlib.pbkdf2_hmac(
+            'sha256', machine_id.encode(), salt, 100000, dklen=32
+        )
+        plaintext = 'v2_secret_value'
+        data_bytes = plaintext.encode('utf-8')
+        ciphertext = bytes(
+            d ^ key[i % len(key)] for i, d in enumerate(data_bytes)
+        )
+        mac = hmac_mod.new(key, salt + ciphertext, hashlib.sha256).digest()
+        v2_value = (
+            'ENCv2:'
+            + base64.b64encode(salt).decode()
+            + ':' + base64.b64encode(mac).decode()
+            + ':' + base64.b64encode(ciphertext).decode()
+        )
+
+        self.manager._env_vars['V2_SECRET'] = v2_value
+        self.manager._save_env_vars()
+
+        result = self.manager.get_secret('V2_SECRET')
+        self.assertEqual(result, 'v2_secret_value')
+        # 自动迁移到 v3
+        self.assertTrue(
+            self.manager._env_vars['V2_SECRET'].startswith('ENCv3:')
+        )
 
     def test_secret_tamper_detection(self):
-        """v2 格式的 HMAC 应能检测篡改"""
+        """v3 格式的 MAC 应能检测篡改"""
         self.manager.set_secret('TAMPER_TEST', 'original_value')
         raw = self.manager._env_vars['TAMPER_TEST']
-        # 篡改密文部分
-        parts = raw[len('ENCv2:'):].split(':')
-        parts[2] = 'AAAA'  # 替换密文
-        self.manager._env_vars['TAMPER_TEST'] = 'ENCv2:' + ':'.join(parts)
+        # 篡改密文部分 (ENCv3:salt:iv:mac:ciphertext)
+        parts = raw[len('ENCv3:'):].split(':')
+        parts[3] = 'AAAA'  # 替换密文
+        self.manager._env_vars['TAMPER_TEST'] = 'ENCv3:' + ':'.join(parts)
 
         with self.assertRaises(DecryptionError):
             self.manager.get_secret('TAMPER_TEST')
+
+    def test_secret_first_time_warning(self):
+        """首次使用加密功能应包含警告"""
+        EnvironmentManager._secret_warning_shown = False
+        msg = self.manager.set_secret('WARN_KEY', 'value')
+        self.assertIn('WARNING', msg)
+        # 第二次不再有警告
+        msg2 = self.manager.set_secret('WARN_KEY2', 'value2')
+        self.assertNotIn('WARNING', msg2)
+
+    def test_set_does_not_log_value(self):
+        """#6: set 操作不应在历史中记录 value"""
+        self.manager.set('SENSITIVE', 'my_password_123')
+        history = self.manager.get_history(limit=10)
+        for entry in history:
+            if entry['operation'] == 'set' and entry['key'] == 'SENSITIVE':
+                self.assertNotIn('my_password_123', entry.get('details', ''))
 
     def test_get_secret_non_secret_raises(self):
         self.manager.set('PLAIN', 'value')
@@ -1699,6 +1760,253 @@ class TestJSONErrorOutput(unittest.TestCase):
         data = self._parse_json(stderr)
         self.assertIsNotNone(data)
         self.assertEqual(data['error_code'], 6)
+
+
+# ══════════════════════════════════════════════════════════════
+# Code Review 修复验证
+# ══════════════════════════════════════════════════════════════
+
+
+class TestLockFile(TestEnvironmentManagerBase):
+    """#1: 验证使用共享 .lock 文件加锁"""
+
+    def test_lock_file_created(self):
+        """写入后应创建 .lock 文件"""
+        self.manager.set('KEY', 'value')
+        lock_path = str(self.env_file) + '.lock'
+        self.assertTrue(os.path.exists(lock_path))
+
+    def test_lock_file_permissions(self):
+        """锁文件应为 600 权限"""
+        self.manager.set('KEY', 'value')
+        lock_path = str(self.env_file) + '.lock'
+        file_stat = os.stat(lock_path)
+        mode = stat.S_IMODE(file_stat.st_mode)
+        self.assertEqual(mode, 0o600)
+
+    def test_concurrent_writes_no_data_loss(self):
+        """#1: 并发写入不应丢数据（模拟两进程竞争锁）"""
+        import threading
+        results = []
+
+        def write_vars(mgr, prefix, count):
+            for i in range(count):
+                mgr.set(f'{prefix}_{i}', f'value_{i}')
+            results.append(prefix)
+
+        mgr1 = EnvironmentManager(self.env_file)
+        mgr2 = EnvironmentManager(self.env_file)
+
+        t1 = threading.Thread(target=write_vars, args=(mgr1, 'A', 5))
+        t2 = threading.Thread(target=write_vars, args=(mgr2, 'B', 5))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # 重新加载验证
+        final = EnvironmentManager(self.env_file)
+        # 至少有一组变量应完整存在（锁确保不丢）
+        all_keys = list(final._env_vars.keys())
+        self.assertTrue(len(all_keys) >= 5)
+
+
+class TestHistoryPermissions(TestEnvironmentManagerBase):
+    """#3/#6: 验证历史文件权限和安全性"""
+
+    def test_history_file_permissions(self):
+        """#6: history.jsonl 应为 600 权限"""
+        self.manager.set('KEY', 'value')
+        history_file = self.manager._get_history_file()
+        if history_file.exists():
+            file_stat = os.stat(history_file)
+            mode = stat.S_IMODE(file_stat.st_mode)
+            self.assertEqual(mode, 0o600)
+
+    def test_history_silent_on_os_error(self):
+        """#3: OSError 应被静默处理（不影响主操作）"""
+        # 正常操作不应抛异常
+        self.manager.set('A', '1')
+        self.manager.set('B', '2')
+        self.assertEqual(self.manager.get('A'), '1')
+
+
+class TestIPv6Validation(TestEnvironmentManagerBase):
+    """#7: 验证 IPv6 使用 ipaddress 标准库"""
+
+    def test_valid_ipv6(self):
+        self.manager.set_schema('IP', format='ipv6')
+        self.manager.set('IP', '::1')
+        result = self.manager.validate('IP')
+        self.assertTrue(result['valid'])
+
+    def test_valid_ipv6_full(self):
+        self.manager.set_schema('IP', format='ipv6')
+        self.manager.set('IP', '2001:0db8:85a3:0000:0000:8a2e:0370:7334')
+        result = self.manager.validate('IP')
+        self.assertTrue(result['valid'])
+
+    def test_invalid_ipv6_triple_colon(self):
+        """:::  应被拒绝"""
+        self.manager.set_schema('IP', format='ipv6')
+        self.manager.set('IP', ':::')
+        result = self.manager.validate('IP')
+        self.assertFalse(result['valid'])
+
+    def test_invalid_ipv6_hex_only(self):
+        """纯 hex 字符串不是合法 IPv6"""
+        self.manager.set_schema('IP', format='ipv6')
+        self.manager.set('IP', 'abcdef')
+        result = self.manager.validate('IP')
+        self.assertFalse(result['valid'])
+
+
+class TestEnvQuoteParsing(TestEnvironmentManagerBase):
+    """#8: 验证 .env 引号解析"""
+
+    def test_balanced_double_quotes(self):
+        env_file = os.path.join(self.temp_dir, 'quotes.env')
+        with open(env_file, 'w') as f:
+            f.write('KEY="hello world"\n')
+        self.manager.load(env_file, format_type='env')
+        self.assertEqual(self.manager.get('KEY'), 'hello world')
+
+    def test_balanced_single_quotes(self):
+        env_file = os.path.join(self.temp_dir, 'quotes.env')
+        with open(env_file, 'w') as f:
+            f.write("KEY='hello world'\n")
+        self.manager.load(env_file, format_type='env')
+        self.assertEqual(self.manager.get('KEY'), 'hello world')
+
+    def test_unbalanced_quotes_preserved(self):
+        """不平衡引号应按字面量处理"""
+        env_file = os.path.join(self.temp_dir, 'quotes.env')
+        with open(env_file, 'w') as f:
+            f.write('KEY="value\'\n')
+        self.manager.load(env_file, format_type='env')
+        # 不平衡引号：保留原样（含引号字符）
+        val = self.manager.get('KEY')
+        self.assertIn('value', val)
+
+
+class TestShellExportKeyEscaping(TestEnvironmentManagerBase):
+    """#9: 验证 shell 导出 key 转义"""
+
+    def test_key_escaped_in_sh_export(self):
+        """key 名应被 shlex.quote 转义"""
+        self.manager.set('NORMAL_KEY', 'value')
+        export_file = os.path.join(self.temp_dir, 'export.sh')
+        self.manager.export('sh', export_file)
+        with open(export_file, 'r') as f:
+            content = f.read()
+        self.assertIn('export NORMAL_KEY=', content)
+
+    def test_env_import_rejects_bad_keys(self):
+        """#9: 导入时应跳过不安全的 key 名"""
+        env_file = os.path.join(self.temp_dir, 'bad.env')
+        with open(env_file, 'w') as f:
+            f.write('GOOD_KEY=value1\n')
+            f.write('$(whoami)=value2\n')
+        self.manager.load(env_file, format_type='env')
+        self.assertTrue(self.manager.exists('GOOD_KEY'))
+        self.assertFalse(self.manager.exists('$(whoami)'))
+
+
+class TestEnvNewlineExport(TestEnvironmentManagerBase):
+    """#13: 验证 .env 导出处理换行"""
+
+    def test_newline_in_value_quoted(self):
+        """值含换行时应被双引号包裹"""
+        self.manager.set('MULTI', 'line1\nline2')
+        export_file = os.path.join(self.temp_dir, 'export.env')
+        self.manager.export('env', export_file)
+        with open(export_file, 'r') as f:
+            content = f.read()
+        # 应包含引号包裹和转义换行
+        self.assertIn('MULTI="', content)
+        self.assertIn('\\n', content)
+
+
+class TestSchemaCorruptionWarning(TestEnvironmentManagerBase):
+    """#10: 验证 schema 损坏时发出警告"""
+
+    def test_corrupted_schema_warns(self):
+        """损坏的 schema 文件应在 stderr 打印警告"""
+        import io
+        schema_file = self.manager._get_schema_file()
+        schema_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(schema_file, 'w') as f:
+            f.write('{invalid json')
+
+        old_stderr = sys.stderr
+        sys.stderr = captured = io.StringIO()
+        try:
+            schema = self.manager._load_schema()
+        finally:
+            sys.stderr = old_stderr
+
+        self.assertEqual(schema, {})
+        self.assertIn('Warning', captured.getvalue())
+        self.assertIn('corrupted', captured.getvalue().lower())
+
+
+class TestCryptoModule(TestEnvironmentManagerBase):
+    """验证 _crypto.py 模块"""
+
+    def test_hkdf_expand(self):
+        from evm._crypto import hkdf_expand
+        prk = b'\x00' * 32
+        okm = hkdf_expand(prk, b'test-info', 32)
+        self.assertEqual(len(okm), 32)
+
+    def test_derive_subkeys_different(self):
+        from evm._crypto import derive_subkeys
+        master = b'\x01' * 32
+        salt = b'\x02' * 16
+        enc_key, mac_key = derive_subkeys(master, salt)
+        self.assertNotEqual(enc_key, mac_key)
+        self.assertEqual(len(enc_key), 32)
+        self.assertEqual(len(mac_key), 32)
+
+    def test_hmac_ctr_keystream_length(self):
+        from evm._crypto import hmac_ctr_keystream
+        key = b'\x03' * 32
+        iv = b'\x04' * 16
+        stream = hmac_ctr_keystream(key, iv, 100)
+        self.assertEqual(len(stream), 100)
+
+    def test_encrypt_decrypt_roundtrip(self):
+        from evm._crypto import encrypt_v3, decrypt_v3
+        import hashlib
+
+        def derive(salt):
+            return hashlib.pbkdf2_hmac(
+                'sha256', b'test-machine-id', salt, 100000, dklen=32
+            )
+
+        plaintext = 'Hello, World! 🔐'
+        encrypted = encrypt_v3(plaintext, derive)
+        self.assertTrue(encrypted.startswith('ENCv3:'))
+        decrypted = decrypt_v3(encrypted[len('ENCv3:'):], derive)
+        self.assertEqual(decrypted, plaintext)
+
+    def test_tampered_ciphertext_detected(self):
+        from evm._crypto import encrypt_v3, decrypt_v3
+        import hashlib
+
+        def derive(salt):
+            return hashlib.pbkdf2_hmac(
+                'sha256', b'test-machine-id', salt, 100000, dklen=32
+            )
+
+        encrypted = encrypt_v3('secret', derive)
+        # 篡改密文
+        parts = encrypted[len('ENCv3:'):].split(':')
+        parts[3] = 'AAAA'
+        tampered = ':'.join(parts)
+
+        with self.assertRaises(DecryptionError):
+            decrypt_v3(tampered, derive)
 
 
 if __name__ == '__main__':

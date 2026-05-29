@@ -14,7 +14,7 @@ EVM 命令行接口
   1  — 通用错误 / 操作取消
   2  — 变量不存在 (KeyNotFoundError)
   3  — 存储错误 (StorageError / CorruptedStorageError / LockTimeoutError)
-  4  — 输入格式错误 (ImportError_ / ExportError)
+  4  — 输入格式错误 (ImportFailedError / ExportError)
   5  — 解密失败 (DecryptionError)
   6  — 校验失败 (ValidationError / SchemaError)
   7  — 分组错误 (GroupNotFoundError / GroupOperationError)
@@ -39,7 +39,7 @@ from .exceptions import (
     ExportError,
     GroupNotFoundError,
     GroupOperationError,
-    ImportError_,
+    ImportFailedError,
     KeyAlreadyExistsError,
     KeyNotFoundError,
     LockTimeoutError,
@@ -70,7 +70,7 @@ EXIT_CODE_MAP = {
     StorageError: 3,
     CorruptedStorageError: 3,
     LockTimeoutError: 3,
-    ImportError_: 4,
+    ImportFailedError: 4,
     ExportError: 4,
     DecryptionError: 5,
     ValidationError: 6,
@@ -163,7 +163,7 @@ Exit Codes:
         """,
     )
 
-    parser.add_argument('--version', action='version', version='%(prog)s 1.9.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 2.0.0')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Show detailed version information')
     parser.add_argument('--env-file',
@@ -444,13 +444,21 @@ def _dispatch(
                 print(msg)
 
     elif cmd == 'get':
-        if getattr(args, 'secret', False):
+        is_secret = getattr(args, 'secret', False)
+        if is_secret:
             value = mgr.get_secret(args.key)
         else:
             value = mgr.get(args.key)
         if json_mode:
             json_output({"key": args.key, "value": value}, quiet)
         elif not quiet:
+            # #18: 向终端输出解密值时发出警告
+            if is_secret and sys.stdout.isatty():
+                print(
+                    "[WARNING] Decrypted secret displayed on terminal "
+                    "(visible in scrollback).",
+                    file=sys.stderr,
+                )
             print(value)
 
     elif cmd == 'delete':

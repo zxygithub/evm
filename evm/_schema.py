@@ -6,13 +6,15 @@ EVM Schema Mixin
 支持格式：url, email, port, integer, boolean, path, ipv4, ipv6
 """
 
+import ipaddress
 import json
 import os
 import re
+import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
-from .exceptions import KeyNotFoundError, SchemaError, ValidationError
+from .exceptions import SchemaError
 
 
 # 内置格式校验正则
@@ -31,8 +33,19 @@ FORMAT_PATTERNS = {
         r'^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}'
         r'(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$'
     ),
-    'ipv6': re.compile(r'^[0-9a-fA-F:]+$'),
 }
+
+# 环境变量 key 名校验正则
+VALID_KEY_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*(?::[A-Za-z_][A-Za-z0-9_]*)*$')
+
+
+def validate_ipv6(value: str) -> bool:
+    """#7: 使用标准库 ipaddress 校验 IPv6 地址"""
+    try:
+        ipaddress.IPv6Address(value)
+        return True
+    except (ipaddress.AddressValueError, ValueError):
+        return False
 
 
 class SchemaMixin:
@@ -43,14 +56,29 @@ class SchemaMixin:
         return self.env_file.parent / 'schema.json'
 
     def _load_schema(self) -> Dict:
-        """加载 schema 定义"""
+        """加载 schema 定义
+
+        #10: 损坏时打印警告到 stderr，而非静默丢弃。
+        """
         schema_file = self._get_schema_file()
         if not schema_file.exists():
             return {}
         try:
             with open(schema_file, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except json.JSONDecodeError as e:
+            print(
+                f"Warning: Schema file is corrupted ({e}). "
+                f"All schema definitions will be ignored until fixed.",
+                file=sys.stderr,
+            )
+            return {}
+        except OSError as e:
+            print(
+                f"Warning: Cannot read schema file ({e}). "
+                f"All schema definitions will be ignored.",
+                file=sys.stderr,
+            )
             return {}
 
     def _save_schema(self, schema: Dict) -> None:
@@ -60,7 +88,7 @@ class SchemaMixin:
             with open(schema_file, 'w', encoding='utf-8') as f:
                 json.dump(schema, f, indent=2, ensure_ascii=False)
             os.chmod(str(schema_file), 0o600)
-        except IOError as e:
+        except OSError as e:
             raise SchemaError(f"Failed to save schema: {e}")
 
     def set_schema(
@@ -83,10 +111,11 @@ class SchemaMixin:
         Returns:
             确认消息
         """
-        if format and format not in FORMAT_PATTERNS:
+        available_formats = list(FORMAT_PATTERNS.keys()) + ['ipv6']
+        if format and format not in available_formats:
             raise SchemaError(
                 f"Unknown format '{format}'. "
-                f"Available: {', '.join(sorted(FORMAT_PATTERNS.keys()))}",
+                f"Available: {', '.join(sorted(available_formats))}",
                 key,
             )
 
@@ -161,7 +190,10 @@ class SchemaMixin:
                         'errors': [f"Required variable '{key}' is not set"],
                         'warnings': [],
                     }
-                return {'valid': True, 'errors': [], 'warnings': ['Variable not set (not required)']}
+                return {
+                    'valid': True, 'errors': [],
+                    'warnings': ['Variable not set (not required)'],
+                }
             value = self._env_vars[key]
 
         return self._validate_value(key, str(value), schema[key])
@@ -200,7 +232,13 @@ class SchemaMixin:
 
         # 格式校验
         fmt = entry.get('format')
-        if fmt and fmt in FORMAT_PATTERNS:
+        if fmt == 'ipv6':
+            # #7: 使用 ipaddress 标准库校验
+            if not validate_ipv6(value):
+                errors.append(
+                    f"Value '{value}' does not match format 'ipv6'"
+                )
+        elif fmt and fmt in FORMAT_PATTERNS:
             if not FORMAT_PATTERNS[fmt].match(value):
                 errors.append(
                     f"Value '{value}' does not match format '{fmt}'"

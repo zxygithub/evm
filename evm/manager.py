@@ -29,6 +29,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from ._crypto import decrypt_v3, encrypt_v3
 from ._groups import GroupMixin
 from ._history import HistoryMixin
 from ._io import IOMixin
@@ -55,10 +56,13 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
     # 加密前缀标识
     SECRET_PREFIX = "ENC:"
     SECRET_V2_PREFIX = "ENCv2:"
+    SECRET_V3_PREFIX = "ENCv3:"
     # 模板引用模式 {{VAR_NAME}}
     TEMPLATE_PATTERN = re.compile(r'\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}')
     # 文件锁默认超时（秒）
     LOCK_TIMEOUT = 5.0
+    # 首次使用加密功能时的警告标志
+    _secret_warning_shown = False
 
     def __init__(
         self,
@@ -97,60 +101,72 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         except json.JSONDecodeError as e:
             raise CorruptedStorageError(
                 f"Storage file is corrupted: {e}. File: {self.env_file}"
-            )
-        except PermissionError:
+            ) from e
+        except PermissionError as e:
             raise StorageError(
                 f"Permission denied reading storage file: {self.env_file}"
-            )
-        except IOError as e:
-            raise StorageError(f"IO error reading storage file: {e}")
+            ) from e
+        except OSError as e:
+            raise StorageError(
+                f"IO error reading storage file: {e}"
+            ) from e
 
     def _save_env_vars(self, dry_run: bool = False) -> None:
-        """保存环境变量到存储文件（原子写入 + 文件锁超时 + chmod 600）
+        """保存环境变量到存储文件（原子写入 + 共享锁文件 + chmod 600）
 
-        P1: 使用 LOCK_NB + 超时重试，替代原来的阻塞式 LOCK_EX。
+        #1 fix: 使用独立的 .lock 文件加锁，而非锁临时文件。
+        两个并发进程争夺同一个 .lock 文件的排他锁，
+        确保 write + move 操作的原子性。
         """
         if dry_run:
             return
 
+        lock_path = str(self.env_file) + '.lock'
+        lock_fd = None
         try:
-            tmp_fd, tmp_path = tempfile.mkstemp(
-                dir=str(self.env_file.parent),
-                suffix='.tmp',
-                prefix='.env_',
-            )
+            # 打开共享锁文件（所有进程竞争同一资源）
+            lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+            self._acquire_lock(lock_fd)
             try:
-                with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
-                    # P1: 非阻塞锁 + 超时重试
-                    self._acquire_lock(f.fileno())
-                    try:
+                tmp_fd, tmp_path = tempfile.mkstemp(
+                    dir=str(self.env_file.parent),
+                    suffix='.tmp',
+                    prefix='.env_',
+                )
+                try:
+                    with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
                         json.dump(
                             self._env_vars, f, indent=2, ensure_ascii=False
                         )
                         f.flush()
                         os.fsync(f.fileno())
-                    finally:
-                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-            except LockTimeoutError:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-                raise
-            except Exception:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-                raise
+                except Exception:
+                    if os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                    raise
 
-            shutil.move(tmp_path, str(self.env_file))
-            os.chmod(str(self.env_file), 0o600)
+                # 原子替换（在锁保护下）
+                shutil.move(tmp_path, str(self.env_file))
+                os.chmod(str(self.env_file), 0o600)
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
         except LockTimeoutError:
             raise
-        except PermissionError:
+        except PermissionError as e:
             raise StorageError(
                 f"Permission denied writing to: {self.env_file}"
-            )
-        except IOError as e:
-            raise StorageError(f"IO error writing storage file: {e}")
+            ) from e
+        except OSError as e:
+            raise StorageError(
+                f"IO error writing storage file: {e}"
+            ) from e
+        finally:
+            if lock_fd is not None:
+                try:
+                    os.close(lock_fd)
+                except OSError:
+                    pass
 
     def _acquire_lock(self, fd: int) -> None:
         """获取排他文件锁，带超时重试
@@ -170,12 +186,15 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
     # ── 基本 CRUD ────────────────────────────────────────
 
     def set(self, key: str, value: str, dry_run: bool = False) -> str:
-        """设置环境变量"""
+        """设置环境变量
+
+        #6 fix: 不记录 value 到操作日志，防止敏感信息泄露。
+        """
         if dry_run:
             return f"[DRY-RUN] Would set: {key}={value}"
         self._env_vars[key] = value
         self._save_env_vars()
-        self.log_operation('set', key, f'value={value}')
+        self.log_operation('set', key)
         return f"Set: {key}={value}"
 
     def get(self, key: str) -> str:
@@ -395,11 +414,12 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
             if isinstance(v, str) and (
                 v.startswith(self.SECRET_PREFIX)
                 or v.startswith(self.SECRET_V2_PREFIX)
+                or v.startswith(self.SECRET_V3_PREFIX)
             )
         )
 
         return {
-            'version': '1.9.0',
+            'version': '2.0.0',
             'author': 'EVM Tool',
             'license': 'MIT',
             'python': sys.version.split()[0],
@@ -457,10 +477,15 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
 
         return self.TEMPLATE_PATTERN.sub(replace_match, value)
 
-    # ── 加密变量（增强版）─────────────────────────────────
+    # ── 加密变量（v3: HKDF + HMAC-CTR + Encrypt-then-MAC）──────
 
-    def _get_machine_salt(self) -> bytes:
-        """获取机器相关的盐值"""
+    @staticmethod
+    def _get_machine_salt() -> bytes:
+        """获取机器相关的盐值
+
+        #2: 此盐值与机器绑定。hostname/uid/arch 变化会导致密钥不同。
+        用户应知晓此限制。
+        """
         machine_id = (
             platform.node()
             + str(os.getuid() if hasattr(os, 'getuid') else '')
@@ -468,71 +493,57 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         )
         return machine_id.encode('utf-8')
 
-    def _derive_key_v2(self, salt: bytes) -> bytes:
-        """P1: 使用 PBKDF2-HMAC-SHA256 派生加密密钥"""
+    def _derive_master_key(self, salt: bytes) -> bytes:
+        """#4+#15: PBKDF2 派生主密钥，供 _crypto.py 使用"""
         return hashlib.pbkdf2_hmac(
             'sha256', self._get_machine_salt(), salt, 100000, dklen=32
         )
 
-    def _encrypt_v2(self, plaintext: str) -> str:
-        """P1: 加密 — PBKDF2 密钥 + XOR 密码 + HMAC 完整性校验
+    # ── v2 兼容（保留旧版解密，供自动迁移使用）────────────
 
-        格式: ENCV2:<salt_b64>:<hmac_b64>:<ciphertext_b64>
-        """
-        salt = os.urandom(16)
-        key = self._derive_key_v2(salt)
-        data_bytes = plaintext.encode('utf-8')
-
-        # XOR 加密
-        ciphertext = bytes(
-            d ^ key[i % len(key)] for i, d in enumerate(data_bytes)
+    def _derive_key_v2(self, salt: bytes) -> bytes:
+        """v2 兼容：PBKDF2 密钥派生（与 v3 共用参数）"""
+        return hashlib.pbkdf2_hmac(
+            'sha256', self._get_machine_salt(), salt, 100000, dklen=32
         )
 
-        # HMAC-SHA256 完整性校验（覆盖 salt + ciphertext）
-        mac = hmac.new(key, salt + ciphertext, hashlib.sha256).digest()
-
-        salt_b64 = base64.b64encode(salt).decode('ascii')
-        mac_b64 = base64.b64encode(mac).decode('ascii')
-        ct_b64 = base64.b64encode(ciphertext).decode('ascii')
-
-        return f"{self.SECRET_V2_PREFIX}{salt_b64}:{mac_b64}:{ct_b64}"
-
     def _decrypt_v2(self, encoded: str) -> str:
-        """P1: 解密 v2 格式，带完整性校验"""
+        """v2 兼容解密（重复密钥 XOR + HMAC）"""
         parts = encoded.split(':')
         if len(parts) != 3:
-            raise DecryptionError("Invalid encrypted data format")
+            raise DecryptionError("Invalid v2 encrypted data format")
 
         try:
             salt = base64.b64decode(parts[0])
             stored_mac = base64.b64decode(parts[1])
             ciphertext = base64.b64decode(parts[2])
         except Exception as e:
-            raise DecryptionError(f"Failed to decode encrypted data: {e}")
+            raise DecryptionError(
+                f"Failed to decode v2 data: {e}"
+            ) from e
 
         key = self._derive_key_v2(salt)
 
-        # 验证 HMAC 完整性
         computed_mac = hmac.new(
             key, salt + ciphertext, hashlib.sha256
         ).digest()
         if not hmac.compare_digest(stored_mac, computed_mac):
             raise DecryptionError(
-                "Data integrity check failed — data may be corrupted or tampered"
+                "Data integrity check failed (v2)"
             )
 
-        # XOR 解密
         plaintext = bytes(
             d ^ key[i % len(key)] for i, d in enumerate(ciphertext)
         )
-
         try:
             return plaintext.decode('utf-8')
         except UnicodeDecodeError as e:
-            raise DecryptionError(f"Decrypted data is not valid UTF-8: {e}")
+            raise DecryptionError(
+                f"Decrypted data is not valid UTF-8: {e}"
+            ) from e
 
     def _decrypt_v1(self, encoded: str) -> str:
-        """兼容：解密旧版 v1 格式（简单 XOR + base64）"""
+        """v1 兼容解密（简单 XOR + base64，无盐无 MAC）"""
         machine_id = (
             platform.node()
             + str(os.getuid() if hasattr(os, 'getuid') else '')
@@ -546,31 +557,79 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
             )
             return decrypted.decode('utf-8')
         except Exception as e:
-            raise DecryptionError(f"Failed to decrypt (v1): {e}")
+            raise DecryptionError(
+                f"Failed to decrypt (v1): {e}"
+            ) from e
 
     def set_secret(
         self, key: str, value: str, dry_run: bool = False
     ) -> str:
-        """加密存储变量（使用 v2 格式）"""
+        """加密存储变量
+
+        使用 v3 格式: HKDF 密钥分离 + HMAC-CTR + Encrypt-then-MAC。
+
+        #2: 首次使用时打印机器绑定警告。
+        """
         if dry_run:
             return f"[DRY-RUN] Would set secret: {key}=*** (encrypted)"
-        encrypted = self._encrypt_v2(value)
+
+        # #2: 首次使用加密功能时发出警告
+        warning = ''
+        if not EnvironmentManager._secret_warning_shown:
+            EnvironmentManager._secret_warning_shown = True
+            warning = (
+                " [WARNING: Encryption key is derived from machine identity "
+                "(hostname + uid + arch). Changing hostname or migrating to "
+                "another machine will make secrets unrecoverable.]"
+            )
+
+        encrypted = encrypt_v3(value, self._derive_master_key)
         self._env_vars[key] = encrypted
         self._save_env_vars()
         self.log_operation('set_secret', key)
-        return f"Set secret: {key}=*** (encrypted)"
+        return f"Set secret: {key}=*** (encrypted){warning}"
 
     def get_secret(self, key: str) -> str:
-        """获取并解密变量（兼容 v1 和 v2 格式）"""
+        """获取并解密变量
+
+        支持 v1/v2/v3 三种格式。
+        #16: 读取 v1/v2 格式时自动迁移到 v3。
+        """
         value = self._env_vars.get(key)
         if value is None:
             raise KeyNotFoundError(key)
 
-        if isinstance(value, str) and value.startswith(self.SECRET_V2_PREFIX):
-            return self._decrypt_v2(value[len(self.SECRET_V2_PREFIX):])
+        if isinstance(value, str) and value.startswith(self.SECRET_V3_PREFIX):
+            # v3: 直接解密
+            return decrypt_v3(
+                value[len(self.SECRET_V3_PREFIX):],
+                self._derive_master_key,
+            )
+
+        elif isinstance(value, str) and value.startswith(self.SECRET_V2_PREFIX):
+            # #16: v2 → 解密后自动迁移到 v3
+            plaintext = self._decrypt_v2(
+                value[len(self.SECRET_V2_PREFIX):]
+            )
+            self._env_vars[key] = encrypt_v3(
+                plaintext, self._derive_master_key
+            )
+            self._save_env_vars()
+            self.log_operation('migrate_secret', key, 'v2 -> v3')
+            return plaintext
+
         elif isinstance(value, str) and value.startswith(self.SECRET_PREFIX):
-            # v1 兼容
-            return self._decrypt_v1(value[len(self.SECRET_PREFIX):])
+            # #16: v1 → 解密后自动迁移到 v3
+            plaintext = self._decrypt_v1(
+                value[len(self.SECRET_PREFIX):]
+            )
+            self._env_vars[key] = encrypt_v3(
+                plaintext, self._derive_master_key
+            )
+            self._save_env_vars()
+            self.log_operation('migrate_secret', key, 'v1 -> v3')
+            return plaintext
+
         else:
             raise DecryptionError(f"'{key}' is not an encrypted variable")
 

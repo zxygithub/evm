@@ -28,9 +28,17 @@ class HistoryMixin:
         details: str = '',
         status: str = 'success',
     ) -> None:
-        """记录操作日志（静默失败，不影响主流程）"""
+        """记录操作日志（静默失败，不影响主流程）
+
+        #3 fix: 仅捕获 OSError 而非裸 Exception，
+        避免吞没编程错误（AttributeError, TypeError 等）。
+
+        #6 fix: 创建文件时设置 chmod 600。
+        """
         try:
             history_file = self._get_history_file()
+            is_new = not history_file.exists()
+
             entry = {
                 'timestamp': datetime.now().isoformat(),
                 'operation': operation,
@@ -41,10 +49,14 @@ class HistoryMixin:
             with open(history_file, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + '\n')
 
+            # 新建文件时设置权限
+            if is_new:
+                os.chmod(str(history_file), 0o600)
+
             # 定期清理：超过上限时只保留最新一半
             self._trim_history()
-        except Exception:
-            pass  # 日志记录不应影响主操作
+        except OSError:
+            pass  # 仅捕获 IO 相关错误，不影响主操作
 
     def get_history(
         self, limit: int = 20, offset: int = 0
@@ -64,7 +76,7 @@ class HistoryMixin:
                             entries.append(json.loads(line))
                         except json.JSONDecodeError:
                             continue
-        except IOError:
+        except OSError:
             return []
 
         # 最新在前
@@ -96,5 +108,5 @@ class HistoryMixin:
             keep = lines[len(lines) // 2:]
             with open(history_file, 'w', encoding='utf-8') as f:
                 f.writelines(keep)
-        except Exception:
+        except OSError:
             pass

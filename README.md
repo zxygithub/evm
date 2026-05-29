@@ -2,7 +2,7 @@
 
 A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
-**Version**: 1.9.0
+**Version**: 2.0.0
 
 ## Features
 
@@ -13,7 +13,7 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 - ✅ **Groups**: Namespace-based organization
 - ✅ **Execute**: Run commands with custom environment
 - ✅ **Load to Memory**: Sync variables to system environment
-- ✅ **Secrets**: PBKDF2+HMAC encrypted storage with v1 backward compatibility
+- ✅ **Secrets**: HKDF+HMAC-CTR encrypted storage (v3) with auto-migration from v1/v2
 - ✅ **Templates**: `{{VAR}}` reference expansion
 - ✅ **Diff**: Compare current state with backups
 - ✅ **Dry-run**: Preview changes before writing
@@ -25,7 +25,7 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 - ✅ **JSON Output**: `--json` flag for structured output (agent-friendly, stdout=data, stderr=errors)
 - ✅ **Quiet Mode**: `--quiet` suppresses all human-readable output
 - ✅ **Granular Exit Codes**: 11 distinct codes for programmatic error handling
-- ✅ **Secure**: Shell-safe export, chmod 600, atomic writes, file lock with timeout
+- ✅ **Secure**: Shell-safe export (key+value), chmod 600, atomic writes, shared lock file, HKDF key separation
 - ✅ **Pure Python**: No external dependencies, Python 3.6+
 
 ## Project Structure
@@ -43,10 +43,11 @@ evm/
 │   ├── _schema.py            # SchemaMixin (format validation)
 │   ├── _completion.py        # Shell completion generators (bash/zsh/fish)
 │   ├── _json.py              # JSON output helpers (agent-friendly)
+│   ├── _crypto.py            # HKDF + HMAC-CTR encryption module
 │   ├── formatters.py         # Terminal output formatting
 │   └── exceptions.py         # Custom exception hierarchy (17 classes)
 ├── examples/                 # Example scripts
-├── tests/                    # Test suite (201 tests)
+├── tests/                    # Test suite (225 tests)
 │   ├── test_main.py          # Unit + integration tests
 │   ├── run_tests.py          # Integration test runner
 │   └── test_case/            # Test configuration files
@@ -388,7 +389,7 @@ EVM can also be used as a Python library:
 
 ```python
 from evm.manager import EnvironmentManager
-from evm.exceptions import EVMError, KeyNotFoundError
+from evm.exceptions import EVMError, KeyNotFoundError, ImportFailedError
 from evm.formatters import print_vars_table, print_validate_all
 
 manager = EnvironmentManager()
@@ -398,7 +399,7 @@ manager.set('API_KEY', 'secret123')
 value = manager.get('API_KEY')
 manager.set_grouped('dev', 'DEBUG', 'true')
 
-# Encrypted secrets (PBKDF2+HMAC, v1 backward compatible)
+# Encrypted secrets (HKDF+HMAC-CTR v3, auto-migration from v1/v2)
 manager.set_secret('DB_PASS', 'encrypted_value')
 plain = manager.get_secret('DB_PASS')
 

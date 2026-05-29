@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-05-30
+
+### Code Review 全部修复（18 项安全/质量改进）
+
+#### CRITICAL 修复
+- **#1 文件锁竞态条件**：改用独立 `.lock` 文件加锁，替代锁临时文件的竞态窗口
+- **#3 裸 except Exception: pass**：`_history.py` 改为 `except OSError`，不再吞没编程错误
+
+#### HIGH 修复
+- **#4 重复密钥 XOR → HMAC-CTR**：消除 32 字节密钥循环复用弱点
+- **#5 机器密钥低熵**：通过 HKDF-Expand 从 PBKDF2 主密钥派生高熵子密钥
+- **#6 历史日志泄露 value**：`set` 操作不再记录明文 value；history.jsonl 设置 chmod 600
+- **#7 IPv6 正则过宽**：改用 `ipaddress.IPv6Address()` 标准库校验
+- **#8 .env 引号解析**：支持平衡双引号/单引号，不平衡引号按字面量处理
+- **#9 Shell 导出 key 未转义**：key 名也用 `shlex.quote()` 转义；导入时校验 key 名格式
+- **#10 Schema 损坏静默丢弃**：损坏时打印 warning 到 stderr
+
+#### MEDIUM 修复
+- **#12 异常链丢失**：全部 `raise ... from e` 保留原始 traceback
+- **#13 .env 导出换行**：值含换行时用双引号包裹并转义 `\n`
+- **#14 异常命名规范化**：`PermissionError_` → `StoragePermissionError`，`ImportError_` → `ImportFailedError`（保留向后兼容别名）
+- **#15 加密/MAC 同钥**：HKDF-Expand 派生独立 enc_key 和 mac_key
+- **#16 v1 加密自动迁移**：读取 v1/v2 密文时自动升级到 v3 格式
+- **#17 历史文件非原子写入**：`_history.py` 仅捕获 OSError
+- **#18 解密值终端暴露**：`get --secret` 输出到终端时显示 scrollback 警告
+
+#### 加密模块重构
+- 新增 `_crypto.py` 独立加密模块
+- HKDF-Expand (RFC 5869) 密钥分离
+- HMAC-CTR 模式流密码（替代重复密钥 XOR）
+- Encrypt-then-MAC（HMAC-SHA256 认证）
+- v3 格式：`ENCv3:<salt>:<iv>:<mac>:<ciphertext>`
+
+#### 异常体系更新
+- `PermissionError_` → `StoragePermissionError`
+- `ImportError_` → `ImportFailedError`
+- 保留向后兼容别名
+
+#### 其他
+- 首次使用 `--secret` 时打印机器绑定警告
+- `set` 操作不再记录 value 到历史日志
+- 测试从 201 增加到 225 个
+
+### Changed
+- 版本号升级到 2.0.0（major bump：加密格式不兼容变更 + 异常重命名）
+
 ## [1.9.0] - 2026-05-30
 
 ### Agent-Friendly CLI (from AGENT_CLI_EVALUATION.md)

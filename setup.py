@@ -8,7 +8,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="evm-cli",
-    version="1.9.0",
+    version="2.0.0",
     author="EVM Tool",
     author_email="evm@example.com",
     description="A command-line tool for managing environment variables",

@@ -1,0 +1,35 @@
+{
+  "skill_name": "evm-agent",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I have a Python web app that needs different configs for dev and prod. Can you set up environment variables using EVM? Dev needs DATABASE_URL=localhost:5432/mydb and API_KEY=dev-key-123. Prod needs DATABASE_URL=prod-db.example.com:5432/mydb and API_KEY=prod-key-456. Also store the prod API key as an encrypted secret.",
+      "expected_output": "Agent should create grouped variables (dev/prod) or separate env-files, use setg or --env-file for isolation, and use --secret for the prod API key. Should use --json for verification.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "I have a .env file at /tmp/app.env with my configuration. I need to import it into EVM, validate that the DATABASE_URL is a valid URL and PORT is a valid port number, then export the validated config as a shell script to /tmp/deploy.sh. Use an isolated env file so my personal EVM config isn't affected.",
+      "expected_output": "Agent should: 1) Create test .env file, 2) Import with evm load using --env-file, 3) Set schemas for URL and PORT, 4) Validate, 5) Export as sh format. All with --json for structured output.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I need to run a Python script that reads DATABASE_URL from the environment. Set up EVM with DATABASE_URL=postgresql://localhost/testdb, then use evm exec to run the script. Also show me how to do this in Python code using the EVM library instead of CLI.",
+      "expected_output": "Agent should demonstrate both CLI approach (evm exec -- python script.py) and Python API approach (EnvironmentManager + execute). Should show exit code passthrough from exec.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "prompt": "My team uses EVM for environment management. I need to create a backup before making changes, then try loading a new config file. If something goes wrong, I want to be able to diff against the backup and restore. Walk me through this workflow using JSON output so I can script it.",
+      "expected_output": "Agent should demonstrate: 1) backup, 2) load new config, 3) diff against backup, 4) restore. All with --json for scripting. Should use --env-file for isolation.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "prompt": "I'm setting up a CI/CD pipeline and need to manage environment variables programmatically. Show me how to use EVM's Python API to: create a fresh config, import from a JSON file, validate all variables against schemas, and handle errors gracefully with specific exception types.",
+      "expected_output": "Agent should provide Python code using EnvironmentManager with proper exception handling (KeyNotFoundError, ImportFailedError, SchemaError, etc.). Should demonstrate the full Python API workflow.",
+      "files": []
+    }
+  ]
+}

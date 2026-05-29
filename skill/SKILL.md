@@ -1,0 +1,330 @@
+---
+name: evm-agent
+description: Environment Variable Manager (EVM) CLI skill for AI agents. Use this skill whenever you need to manage environment variables, handle .env files, store/retrieve secrets, set up multi-environment configurations, validate configuration values, or run commands with specific environment contexts. This includes scenarios like setting up dev/staging/prod configs, importing .env files, exporting shell scripts, managing encrypted credentials, or any task involving environment configuration management. Even if the user doesn't explicitly mention "EVM", trigger this skill for environment variable workflows.
+---
+
+# EVM Agent Skill
+
+EVM (Environment Variable Manager) is a CLI tool for managing environment variables. This skill teaches you how to use it effectively as an agent.
+
+## Installation
+
+```bash
+# Check if installed
+evm --version
+
+# Install from source
+pip install -e .
+
+# Install from PyPI (if available)
+pip install evm-cli
+```
+
+## Core Principles for Agent Usage
+
+### 1. Always Use `--json` for Structured Output
+
+EVM supports `--json` on all commands. This gives you predictable, parseable output on stdout. Errors go to stderr as JSON.
+
+```bash
+# stdout: {"status": "ok", "data": {"key": "API_KEY", "value": "abc123"}}
+evm get API_KEY --json
+
+# stdout: {"status": "ok", "data": {"API_KEY": "abc123", "DB_URL": "..."}}
+evm list --json
+
+# stderr: {"status": "error", "error": "...", "error_code": 2}
+evm get MISSING --json
+```
+
+### 2. Use `--env-file` for Isolation
+
+Never touch the user's default `~/.evm/env.json` unless explicitly asked. Use `--env-file` to create isolated storage:
+
+```bash
+evm --env-file /tmp/my_project.json set API_KEY abc123
+evm --env-file /tmp/my_project.json list --json
+```
+
+### 3. Use `--force` for Non-Interactive Execution
+
+Destructive operations (`clear`, `delete-group`) prompt for confirmation in interactive mode. Always use `--force` in agent contexts:
+
+```bash
+evm --force clear
+evm --force delete-group staging
+```
+
+### 4. Use `--dry-run` to Preview Changes
+
+Before executing write operations, preview what would happen:
+
+```bash
+evm --dry-run set API_KEY new_value --json
+# stdout: {"status": "ok", "data": {"key": "API_KEY", "value": "new_value", "message": "[DRY-RUN] Would set: API_KEY=new_value"}}
+```
+
+### 5. Use `--quiet` to Suppress Human Output
+
+When you only need the exit code or JSON data:
+
+```bash
+# Silent success check
+evm --quiet set KEY value
+echo $?  # 0 = success
+
+# JSON-only mode
+evm --json --quiet list
+```
+
+## Exit Codes
+
+EVM returns granular exit codes so you can distinguish error types without parsing messages:
+
+| Code | Meaning | When to expect |
+|------|---------|---------------|
+| 0 | Success | Command completed |
+| 1 | General error / cancelled | Unknown error or user cancel |
+| 2 | Key not found | `get`/`delete` on missing variable |
+| 3 | Storage error | Corrupt JSON, permission denied, lock timeout |
+| 4 | Import/export error | Bad file format, file not found |
+| 5 | Decryption error | Wrong format or tampered ciphertext |
+| 6 | Validation/schema error | Value doesn't match schema |
+| 7 | Group error | Group not found, can't delete default |
+| 8 | Backup error | Backup file not found or corrupt |
+| 9 | Editor error | $EDITOR failed |
+| 10 | Command not found | `exec` target doesn't exist |
+
+## Common Workflows
+
+### Store and Retrieve Variables
+
+```bash
+# Store
+evm --env-file config.json set DATABASE_URL "postgresql://localhost/mydb"
+
+# Retrieve (parse JSON)
+RESULT=$(evm --env-file config.json get DATABASE_URL --json 2>/dev/null)
+VALUE=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['value'])")
+
+# Check existence (exit code 2 = not found)
+if evm --env-file config.json --quiet get DATABASE_URL 2>/dev/null; then
+    echo "exists"
+else
+    echo "not found"
+fi
+```
+
+### Multi-Environment Setup
+
+```bash
+# Create separate configs per environment
+evm --env-file dev.json set DATABASE_URL "localhost:5432/dev"
+evm --env-file staging.json set DATABASE_URL "staging.example.com:5432/staging"
+evm --env-file prod.json set DATABASE_URL "prod.example.com:5432/prod"
+
+# Or use groups in a single file
+evm --env-file config.json setg dev DATABASE_URL "localhost:5432/dev"
+evm --env-file config.json setg prod DATABASE_URL "prod.example.com:5432/prod"
+evm --env-file config.json listg dev --json
+```
+
+### Import and Export
+
+```bash
+# Import .env file
+evm --env-file config.json load .env
+
+# Import JSON
+evm --env-file config.json load config.json
+
+# Export to .env format
+evm --env-file config.json export --format env --output .env
+
+# Export to shell script
+evm --env-file config.json export --format sh --output env.sh
+
+# Export specific group
+evm --env-file config.json export --group prod --format env --output prod.env
+```
+
+### Encrypted Secrets
+
+```bash
+# Store encrypted (key derived from machine identity)
+evm --env-file config.json set --secret DB_PASSWORD "super_secret"
+
+# Retrieve decrypted
+evm --env-file config.json get --secret DB_PASSWORD --json
+# Note: stderr will show a WARNING about terminal scrollback if stdout is a TTY
+```
+
+**Important**: Encryption keys are derived from machine identity (hostname + uid + arch). Secrets cannot be migrated to different machines. Warn users about this limitation.
+
+### Schema Validation
+
+```bash
+# Define schemas
+evm --env-file config.json schema set API_URL --format url --required
+evm --env-file config.json schema set PORT --format port
+evm --env-file config.json schema set ADMIN_EMAIL --format email
+
+# Validate all
+evm --env-file config.json validate --json
+# stdout: {"status": "ok", "data": {"API_URL": {"valid": true, ...}, "PORT": {"valid": true, ...}}}
+
+# Available formats: url, email, port, integer, boolean, path, ipv4, ipv6
+# Custom regex also supported:
+evm --env-file config.json schema set API_KEY --pattern '^[a-zA-Z0-9]{32,}$'
+```
+
+### Run Commands with Environment
+
+```bash
+# Execute with all EVM variables injected
+evm --env-file config.json exec -- python app.py
+# Exit code is passed through from the child process
+
+# Check child process exit code
+evm --env-file config.json exec -- sh -c 'exit 1'
+echo $?  # 1
+```
+
+### Backup and Restore
+
+```bash
+# Create backup
+evm --env-file config.json backup --file backup_$(date +%Y%m%d).json
+
+# Restore (replace mode)
+evm --env-file config.json restore backup.json
+
+# Restore (merge mode)
+evm --env-file config.json restore backup.json --merge
+
+# Compare current state with backup
+evm --env-file config.json diff backup.json --json
+```
+
+### Template Expansion
+
+```bash
+# Set variables with template references
+evm --env-file config.json set API_HOST "api.example.com"
+evm --env-file config.json set API_URL "https://{{API_HOST}}/v1"
+
+# Expand templates
+evm --env-file config.json expand API_URL --json
+# stdout: {"status": "ok", "data": {"key": "API_URL", "expanded": "https://api.example.com/v1"}}
+```
+
+### Operation History
+
+```bash
+# View recent operations
+evm --env-file config.json history --json
+
+# Clear history
+evm --env-file config.json history --clear
+```
+
+## Python API Usage
+
+EVM can also be used as a Python library:
+
+```python
+from evm.manager import EnvironmentManager
+from evm.exceptions import (
+    EVMError, KeyNotFoundError, KeyAlreadyExistsError,
+    StorageError, DecryptionError, SchemaError, ImportFailedError
+)
+
+mgr = EnvironmentManager("/tmp/my_config.json")
+
+# Basic CRUD
+mgr.set("API_KEY", "abc123")
+value = mgr.get("API_KEY")  # raises KeyNotFoundError if missing
+mgr.delete("API_KEY")
+
+# Encrypted secrets
+mgr.set_secret("DB_PASS", "super_secret")
+plain = mgr.get_secret("DB_PASS")  # auto-migrates v1/v2 → v3
+
+# Schema validation
+mgr.set_schema("URL", format="url", required=True)
+result = mgr.validate("URL")  # {"valid": True, "errors": [], "warnings": []}
+
+# Import/Export
+mgr.load("config.env")
+mgr.export("json", "/tmp/export.json")
+
+# Groups
+mgr.set_grouped("dev", "PORT", "3000")
+mgr.list_groups()  # {"dev": 1}
+
+# Templates
+mgr.set("HOST", "localhost")
+mgr.set("URL", "http://{{HOST}}:3000")
+mgr.expand("URL")  # "http://localhost:3000"
+```
+
+## Error Handling Patterns
+
+### Shell Pattern
+
+```bash
+# Robust EVM call with error handling
+evm_call() {
+    local output
+    local exit_code
+    
+    output=$(evm --env-file "$EVM_FILE" --json "$@" 2>/dev/null)
+    exit_code=$?
+    
+    case $exit_code in
+        0) echo "$output" ;;
+        2) echo "Error: Variable not found" >&2 ;;
+        3) echo "Error: Storage problem" >&2 ;;
+        4) echo "Error: Import/export failed" >&2 ;;
+        5) echo "Error: Decryption failed" >&2 ;;
+        6) echo "Error: Validation failed" >&2 ;;
+        *) echo "Error: Unknown (code $exit_code)" >&2 ;;
+    esac
+    
+    return $exit_code
+}
+```
+
+### Python Pattern
+
+```python
+from evm.manager import EnvironmentManager
+from evm.exceptions import KeyNotFoundError, DecryptionError, SchemaError
+
+mgr = EnvironmentManager("config.json")
+
+try:
+    value = mgr.get("API_KEY")
+except KeyNotFoundError as e:
+    print(f"Variable '{e.key}' not found")
+except DecryptionError as e:
+    print(f"Decryption failed: {e}")
+except SchemaError as e:
+    print(f"Schema violation: {e}")
+```
+
+## Security Considerations
+
+1. **File permissions**: EVM automatically sets `chmod 600` on storage files, backups, schema files, and history files
+2. **Shell export safety**: Both keys and values are escaped with `shlex.quote()` in `.sh` exports
+3. **Import key validation**: `.env` imports reject keys that don't match `^[A-Za-z_][A-Za-z0-9_]*$`
+4. **Secret storage**: Uses HKDF key separation + HMAC-CTR encryption + Encrypt-then-MAC (v3 format)
+5. **Machine binding**: Encryption keys are derived from machine identity — secrets cannot cross machines
+6. **History safety**: `set` operations do not log plaintext values to history
+
+## Reference
+
+For complete command reference, read `references/command-reference.md`.
+For detailed exit code mapping, read `references/exit-codes.md`.
+For Python API patterns, read `references/python-api.md`.
+For security architecture, read `references/security.md`.

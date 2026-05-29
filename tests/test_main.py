@@ -24,7 +24,11 @@ from evm.exceptions import (
     ImportError_,
     KeyAlreadyExistsError,
     KeyNotFoundError,
+    LockTimeoutError,
+    OperationCancelledError,
+    SchemaError,
     StorageError,
+    ValidationError,
 )
 from evm.manager import EnvironmentManager
 
@@ -545,12 +549,48 @@ class TestSecrets(TestEnvironmentManagerBase):
 
     def test_set_and_get_secret(self):
         self.manager.set_secret('API_KEY', 'super_secret_value')
-        # 存储的值应该是加密的
+        # v2 格式：ENCv2:<salt>:<hmac>:<ciphertext>
         raw = self.manager._env_vars['API_KEY']
-        self.assertTrue(raw.startswith('ENC:'))
+        self.assertTrue(raw.startswith('ENCv2:'))
         self.assertNotEqual(raw, 'super_secret_value')
         # 解密应返回原值
         self.assertEqual(self.manager.get_secret('API_KEY'), 'super_secret_value')
+
+    def test_secret_v1_backward_compat(self):
+        """v1 格式的加密变量仍应可以解密"""
+        import base64
+        import hashlib
+        import platform
+        # 模拟旧版 v1 加密
+        machine_id = (
+            platform.node()
+            + str(os.getuid() if hasattr(os, 'getuid') else '')
+            + platform.machine()
+        )
+        key = hashlib.sha256(machine_id.encode()).digest()
+        plaintext = 'old_secret_value'
+        data_bytes = plaintext.encode('utf-8')
+        encrypted = bytes(d ^ key[i % len(key)] for i, d in enumerate(data_bytes))
+        v1_value = 'ENC:' + base64.b64encode(encrypted).decode('ascii')
+
+        self.manager._env_vars['OLD_SECRET'] = v1_value
+        self.manager._save_env_vars()
+
+        # 应该可以解密 v1 格式
+        result = self.manager.get_secret('OLD_SECRET')
+        self.assertEqual(result, 'old_secret_value')
+
+    def test_secret_tamper_detection(self):
+        """v2 格式的 HMAC 应能检测篡改"""
+        self.manager.set_secret('TAMPER_TEST', 'original_value')
+        raw = self.manager._env_vars['TAMPER_TEST']
+        # 篡改密文部分
+        parts = raw[len('ENCv2:'):].split(':')
+        parts[2] = 'AAAA'  # 替换密文
+        self.manager._env_vars['TAMPER_TEST'] = 'ENCv2:' + ':'.join(parts)
+
+        with self.assertRaises(DecryptionError):
+            self.manager.get_secret('TAMPER_TEST')
 
     def test_get_secret_non_secret_raises(self):
         self.manager.set('PLAIN', 'value')
@@ -797,6 +837,360 @@ class TestCLI(unittest.TestCase):
         # 验证没有实际写入
         code = self._run(['get', 'KEY'])
         self.assertEqual(code, 1)
+
+
+# ══════════════════════════════════════════════════════════════
+# P1: 文件锁超时
+# ══════════════════════════════════════════════════════════════
+
+
+class TestLockTimeout(TestEnvironmentManagerBase):
+
+    def test_lock_timeout_custom(self):
+        """自定义超时值"""
+        mgr = EnvironmentManager(self.env_file, lock_timeout=0.1)
+        self.assertEqual(mgr.lock_timeout, 0.1)
+
+    def test_concurrent_write_no_conflict(self):
+        """顺序写入不应冲突"""
+        self.manager.set('A', '1')
+        self.manager.set('B', '2')
+        self.assertEqual(self.manager.get('A'), '1')
+        self.assertEqual(self.manager.get('B'), '2')
+
+
+# ══════════════════════════════════════════════════════════════
+# P1: load() 重构
+# ══════════════════════════════════════════════════════════════
+
+
+class TestLoadRefactored(TestEnvironmentManagerBase):
+
+    def test_detect_format_explicit(self):
+        path = Path(self.temp_dir) / 'test.dat'
+        path.touch()
+        fmt = self.manager._detect_format(path, 'json')
+        self.assertEqual(fmt, 'json')
+
+    def test_detect_format_by_extension(self):
+        json_path = Path(self.temp_dir) / 'test.json'
+        json_path.touch()
+        env_path = Path(self.temp_dir) / 'test.env'
+        env_path.touch()
+
+        self.assertEqual(self.manager._detect_format(json_path, None), 'json')
+        self.assertEqual(self.manager._detect_format(env_path, None), 'env')
+
+    def test_detect_format_by_content(self):
+        json_path = Path(self.temp_dir) / 'config'
+        with open(json_path, 'w') as f:
+            f.write('{"key": "value"}')
+        self.assertEqual(self.manager._detect_format(json_path, None), 'json')
+
+        env_path = Path(self.temp_dir) / 'config2'
+        with open(env_path, 'w') as f:
+            f.write('KEY=value\n')
+        self.assertEqual(self.manager._detect_format(env_path, None), 'env')
+
+    def test_load_nested_returns_groups(self):
+        data = {
+            'dev': {'A': '1', 'B': '2'},
+            'prod': {'A': '3'},
+        }
+        loaded, groups = self.manager._load_nested(data)
+        self.assertEqual(groups, 2)
+        self.assertEqual(loaded['dev:A'], '1')
+        self.assertEqual(loaded['prod:A'], '3')
+
+    def test_apply_group_prefix(self):
+        vars_dict = {'KEY1': 'v1', 'KEY2': 'v2'}
+        result = self.manager._apply_group_prefix(vars_dict, 'staging')
+        self.assertIn('staging:KEY1', result)
+        self.assertIn('staging:KEY2', result)
+
+    def test_apply_group_prefix_none(self):
+        vars_dict = {'KEY1': 'v1'}
+        result = self.manager._apply_group_prefix(vars_dict, None)
+        self.assertEqual(result, vars_dict)
+
+
+# ══════════════════════════════════════════════════════════════
+# P2: 操作历史
+# ══════════════════════════════════════════════════════════════
+
+
+class TestHistory(TestEnvironmentManagerBase):
+
+    def test_log_and_get_history(self):
+        self.manager.set('HIST_KEY', 'value')
+        history = self.manager.get_history(limit=10)
+        self.assertTrue(len(history) >= 1)
+        self.assertEqual(history[0]['operation'], 'set')
+        self.assertEqual(history[0]['key'], 'HIST_KEY')
+
+    def test_history_empty(self):
+        history = self.manager.get_history()
+        self.assertEqual(history, [])
+
+    def test_clear_history(self):
+        self.manager.set('A', '1')
+        self.manager.set('B', '2')
+        msg = self.manager.clear_history()
+        self.assertIn('cleared', msg.lower())
+        history = self.manager.get_history()
+        self.assertEqual(history, [])
+
+    def test_history_latest_first(self):
+        self.manager.set('FIRST', '1')
+        self.manager.set('SECOND', '2')
+        history = self.manager.get_history(limit=10)
+        # 最新在前
+        self.assertEqual(history[0]['key'], 'SECOND')
+        self.assertEqual(history[1]['key'], 'FIRST')
+
+    def test_history_operations_logged(self):
+        """多种操作都应记录日志"""
+        self.manager.set('A', '1')
+        self.manager.delete('A')
+        self.manager.set('B', '2')
+        self.manager.rename('B', 'C')
+
+        history = self.manager.get_history(limit=10)
+        ops = [h['operation'] for h in history]
+        self.assertIn('set', ops)
+        self.assertIn('delete', ops)
+        self.assertIn('rename', ops)
+
+
+# ══════════════════════════════════════════════════════════════
+# P2: Schema 定义和校验
+# ══════════════════════════════════════════════════════════════
+
+
+class TestSchema(TestEnvironmentManagerBase):
+
+    def test_set_schema(self):
+        msg = self.manager.set_schema('API_URL', format='url', required=True)
+        self.assertIn('API_URL', msg)
+
+    def test_set_schema_invalid_format(self):
+        with self.assertRaises(SchemaError):
+            self.manager.set_schema('KEY', format='nonexistent_format')
+
+    def test_set_schema_invalid_regex(self):
+        with self.assertRaises(SchemaError):
+            self.manager.set_schema('KEY', pattern='[invalid')
+
+    def test_get_schema(self):
+        self.manager.set_schema('URL', format='url')
+        schema = self.manager.get_schema('URL')
+        self.assertIn('URL', schema)
+        self.assertEqual(schema['URL']['format'], 'url')
+
+    def test_get_schema_not_found(self):
+        with self.assertRaises(SchemaError):
+            self.manager.get_schema('MISSING')
+
+    def test_get_all_schema(self):
+        self.manager.set_schema('A', format='url')
+        self.manager.set_schema('B', format='email')
+        schema = self.manager.get_schema()
+        self.assertEqual(len(schema), 2)
+
+    def test_delete_schema(self):
+        self.manager.set_schema('KEY', format='url')
+        msg = self.manager.delete_schema('KEY')
+        self.assertIn('KEY', msg)
+        with self.assertRaises(SchemaError):
+            self.manager.get_schema('KEY')
+
+    def test_validate_url_valid(self):
+        self.manager.set('API_URL', 'https://api.example.com/v1')
+        self.manager.set_schema('API_URL', format='url')
+        result = self.manager.validate('API_URL')
+        self.assertTrue(result['valid'])
+
+    def test_validate_url_invalid(self):
+        self.manager.set('API_URL', 'not-a-url')
+        self.manager.set_schema('API_URL', format='url')
+        result = self.manager.validate('API_URL')
+        self.assertFalse(result['valid'])
+
+    def test_validate_email(self):
+        self.manager.set_schema('EMAIL', format='email')
+        self.manager.set('EMAIL', 'user@example.com')
+        self.assertTrue(self.manager.validate('EMAIL')['valid'])
+
+        self.manager.set('EMAIL', 'invalid-email')
+        self.assertFalse(self.manager.validate('EMAIL')['valid'])
+
+    def test_validate_port(self):
+        self.manager.set_schema('PORT', format='port')
+        self.manager.set('PORT', '8080')
+        self.assertTrue(self.manager.validate('PORT')['valid'])
+
+        self.manager.set('PORT', 'not-a-port')
+        self.assertFalse(self.manager.validate('PORT')['valid'])
+
+    def test_validate_integer(self):
+        self.manager.set_schema('COUNT', format='integer')
+        self.manager.set('COUNT', '-42')
+        self.assertTrue(self.manager.validate('COUNT')['valid'])
+
+        self.manager.set('COUNT', 'not-a-number')
+        self.assertFalse(self.manager.validate('COUNT')['valid'])
+
+    def test_validate_boolean(self):
+        self.manager.set_schema('FLAG', format='boolean')
+        self.manager.set('FLAG', 'true')
+        self.assertTrue(self.manager.validate('FLAG')['valid'])
+
+        self.manager.set('FLAG', 'maybe')
+        self.assertFalse(self.manager.validate('FLAG')['valid'])
+
+    def test_validate_ipv4(self):
+        self.manager.set_schema('IP', format='ipv4')
+        self.manager.set('IP', '192.168.1.1')
+        self.assertTrue(self.manager.validate('IP')['valid'])
+
+        self.manager.set('IP', '999.999.999.999')
+        self.assertFalse(self.manager.validate('IP')['valid'])
+
+    def test_validate_custom_pattern(self):
+        self.manager.set_schema('CODE', pattern=r'^[A-Z]{3}-\d{4}$')
+        self.manager.set('CODE', 'ABC-1234')
+        self.assertTrue(self.manager.validate('CODE')['valid'])
+
+        self.manager.set('CODE', 'abc')
+        self.assertFalse(self.manager.validate('CODE')['valid'])
+
+    def test_validate_required_missing(self):
+        self.manager.set_schema('REQUIRED_VAR', format='url', required=True)
+        result = self.manager.validate('REQUIRED_VAR')
+        self.assertFalse(result['valid'])
+        self.assertTrue(any('Required' in e for e in result['errors']))
+
+    def test_validate_all(self):
+        self.manager.set('URL', 'https://example.com')
+        self.manager.set('PORT', '8080')
+        self.manager.set_schema('URL', format='url')
+        self.manager.set_schema('PORT', format='port')
+        results = self.manager.validate_all()
+        self.assertTrue(all(r['valid'] for r in results.values()))
+
+    def test_validate_no_schema(self):
+        with self.assertRaises(SchemaError):
+            self.manager.validate('NO_SCHEMA_KEY')
+
+
+# ══════════════════════════════════════════════════════════════
+# P2: Shell 补全
+# ══════════════════════════════════════════════════════════════
+
+
+class TestCompletion(TestEnvironmentManagerBase):
+
+    def test_bash_completion(self):
+        from evm._completion import generate_bash_completion
+        from evm.cli import ALL_COMMANDS
+        script = generate_bash_completion(ALL_COMMANDS)
+        self.assertIn('_evm_completions', script)
+        self.assertIn('complete -F', script)
+        self.assertIn('set', script)
+
+    def test_zsh_completion(self):
+        from evm._completion import generate_zsh_completion
+        from evm.cli import ALL_COMMANDS
+        script = generate_zsh_completion(ALL_COMMANDS)
+        self.assertIn('#compdef evm', script)
+
+    def test_fish_completion(self):
+        from evm._completion import generate_fish_completion
+        from evm.cli import ALL_COMMANDS
+        script = generate_fish_completion(ALL_COMMANDS)
+        self.assertIn('complete -c evm', script)
+
+
+# ══════════════════════════════════════════════════════════════
+# P2: CLI 新命令
+# ══════════════════════════════════════════════════════════════
+
+
+class TestCLINewCommands(unittest.TestCase):
+    """测试新增 CLI 命令"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.env_file = os.path.join(self.temp_dir, 'cli_test.json')
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir)
+
+    def _run(self, args):
+        from evm.cli import main
+        return main(['--env-file', self.env_file] + args)
+
+    def test_completion_bash(self):
+        code = self._run(['completion', 'bash'])
+        self.assertEqual(code, 0)
+
+    def test_completion_zsh(self):
+        code = self._run(['completion', 'zsh'])
+        self.assertEqual(code, 0)
+
+    def test_completion_fish(self):
+        code = self._run(['completion', 'fish'])
+        self.assertEqual(code, 0)
+
+    def test_history_empty(self):
+        code = self._run(['history'])
+        self.assertEqual(code, 0)
+
+    def test_history_with_data(self):
+        self._run(['set', 'A', '1'])
+        code = self._run(['history'])
+        self.assertEqual(code, 0)
+
+    def test_history_clear(self):
+        self._run(['set', 'A', '1'])
+        code = self._run(['history', '--clear'])
+        self.assertEqual(code, 0)
+
+    def test_schema_set(self):
+        code = self._run(['schema', 'set', 'URL', '--format', 'url'])
+        self.assertEqual(code, 0)
+
+    def test_schema_list(self):
+        self._run(['schema', 'set', 'URL', '--format', 'url'])
+        code = self._run(['schema', 'list'])
+        self.assertEqual(code, 0)
+
+    def test_schema_delete(self):
+        self._run(['schema', 'set', 'URL', '--format', 'url'])
+        code = self._run(['schema', 'delete', 'URL'])
+        self.assertEqual(code, 0)
+
+    def test_validate_with_schema(self):
+        self._run(['set', 'URL', 'https://example.com'])
+        self._run(['schema', 'set', 'URL', '--format', 'url'])
+        code = self._run(['validate', 'URL'])
+        self.assertEqual(code, 0)
+
+    def test_validate_all(self):
+        self._run(['set', 'URL', 'https://example.com'])
+        self._run(['schema', 'set', 'URL', '--format', 'url'])
+        code = self._run(['validate'])
+        self.assertEqual(code, 0)
+
+    def test_clear_with_force(self):
+        self._run(['set', 'A', '1'])
+        code = self._run(['--force', 'clear'])
+        self.assertEqual(code, 0)
+
+    def test_delete_group_with_force(self):
+        self._run(['setg', 'test_grp', 'K', 'v'])
+        code = self._run(['--force', 'delete-group', 'test_grp'])
+        self.assertEqual(code, 0)
 
 
 if __name__ == '__main__':

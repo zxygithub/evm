@@ -40,6 +40,17 @@ class PermissionError_(StorageError):
     pass
 
 
+class LockTimeoutError(StorageError):
+    """获取文件锁超时"""
+    def __init__(self, path: str, timeout: float):
+        self.path = path
+        self.timeout = timeout
+        super().__init__(
+            f"Failed to acquire file lock on '{path}' within {timeout}s. "
+            f"Another process may be writing."
+        )
+
+
 class ExportError(EVMError):
     """导出失败"""
     pass
@@ -86,6 +97,29 @@ class DecryptionError(EVMError):
     pass
 
 
+class ValidationError(EVMError):
+    """变量值校验失败"""
+    def __init__(self, key: str, value: str, expected_format: str):
+        self.key = key
+        self.value = value
+        self.expected_format = expected_format
+        super().__init__(
+            f"Variable '{key}' value does not match format '{expected_format}'"
+        )
+
+
+class SchemaError(EVMError):
+    """Schema 相关错误"""
+    def __init__(self, message: str, key: str = None):
+        self.key = key
+        super().__init__(message)
+
+
+class OperationCancelledError(EVMError):
+    """用户取消操作"""
+    pass
+
+
 __all__ = [
     'EVMError',
     'KeyNotFoundError',
@@ -93,6 +127,7 @@ __all__ = [
     'StorageError',
     'CorruptedStorageError',
     'PermissionError_',
+    'LockTimeoutError',
     'ExportError',
     'ImportError_',
     'CommandNotFoundError',
@@ -101,4 +136,7 @@ __all__ = [
     'BackupError',
     'EditorError',
     'DecryptionError',
+    'ValidationError',
+    'SchemaError',
+    'OperationCancelledError',
 ]

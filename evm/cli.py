@@ -8,20 +8,36 @@ EVM 命令行接口
 
 import argparse
 import sys
-from pathlib import Path
 from typing import List, Optional
 
-from .exceptions import EVMError, GroupNotFoundError
+from ._completion import SHELL_GENERATORS
+from .exceptions import EVMError, GroupNotFoundError, OperationCancelledError
 from .formatters import (
     print_diff,
     print_groups,
+    print_history,
     print_info,
     print_load_memory_result,
+    print_schema,
     print_search_results,
+    print_validate_all,
+    print_validate_result,
     print_vars_by_group,
     print_vars_table,
 )
 from .manager import EnvironmentManager
+
+# 所有顶级命令（用于补全生成）
+ALL_COMMANDS = [
+    'set', 'get', 'delete', 'list', 'clear',
+    'groups', 'setg', 'getg', 'deleteg', 'listg', 'delete-group', 'move-group',
+    'export', 'load',
+    'backup', 'restore',
+    'search', 'rename', 'copy',
+    'exec', 'loadmemory',
+    'edit', 'info', 'diff', 'expand',
+    'validate', 'history', 'schema', 'completion',
+]
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -32,269 +48,227 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  evm set API_KEY abc123           # Set an environment variable
-  evm set --secret DB_PASS mypass  # Set an encrypted secret variable
+  evm set API_KEY abc123           # Set a variable
+  evm set --secret DB_PASS mypass  # Set an encrypted secret
   evm get API_KEY                  # Get a variable
   evm get --secret DB_PASS         # Get and decrypt a secret
   evm list                         # List all variables
-  evm list --show-groups           # List variables grouped by namespace
-  evm delete API_KEY               # Delete a variable
-  evm export --format env          # Export to .env file
-  evm load config.json             # Load from JSON file (auto-detect)
-  evm load config.json --nest      # Import nested JSON (groups from first-level keys)
-  evm exec -- python script.py    # Execute command with env vars
-  evm edit API_KEY                 # Edit variable in $EDITOR
-  evm info                         # Show tool and storage info
-  evm diff backup.json             # Compare current state with backup
-  evm expand URL                   # Expand template references in variable value
+  evm list --show-groups           # List by namespace
+  evm export --format env          # Export to .env
+  evm load config.json --nest      # Import nested JSON
+  evm edit API_KEY                 # Edit in $EDITOR
+  evm info                         # Show tool info
+  evm diff backup.json             # Compare with backup
+  evm expand URL                   # Expand {{VAR}} templates
+  evm validate API_URL             # Validate against schema
+  evm history                      # Show operation log
+  evm schema set API_URL --format url
+  evm completion bash              # Generate shell completion
 
 Group Management:
-  evm setg dev DATABASE_URL localhost  # Set variable in 'dev' group
-  evm getg dev DATABASE_URL           # Get variable from 'dev' group
-  evm listg dev                       # List variables in 'dev' group
-  evm deleteg dev DATABASE_URL        # Delete variable from 'dev' group
-  evm groups                          # List all groups
-  evm delete-group dev                # Delete entire group
-  evm move-group API_KEY prod         # Move variable to 'prod' group
+  evm setg dev DB_URL localhost
+  evm getg dev DB_URL
+  evm listg dev
+  evm groups
+  evm delete-group dev
 
 Options:
-  --dry-run  Preview changes without writing (supported by: set, delete, clear,
-             rename, copy, export, load, setg, deleteg, delete-group, move-group,
-             set --secret)
+  --dry-run  Preview changes (set, delete, clear, rename, copy, export,
+             load, setg, deleteg, delete-group, move-group, set --secret)
+  --force    Skip confirmation for destructive operations (clear, delete-group)
         """,
     )
 
-    parser.add_argument(
-        '--version', action='version', version='%(prog)s 1.7.0'
-    )
-    parser.add_argument(
-        '-v', '--verbose', action='store_true',
-        help='Show detailed version information',
-    )
-    parser.add_argument(
-        '--env-file',
-        help='Path to environment storage file (default: ~/.evm/env.json)',
-    )
-    parser.add_argument(
-        '--dry-run', action='store_true',
-        help='Preview changes without writing to storage',
-    )
+    parser.add_argument('--version', action='version', version='%(prog)s 1.8.0')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Show detailed version information')
+    parser.add_argument('--env-file',
+                        help='Path to storage file (default: ~/.evm/env.json)')
+    parser.add_argument('--dry-run', action='store_true',
+                        help='Preview changes without writing')
+    parser.add_argument('--force', action='store_true',
+                        help='Skip confirmation for destructive operations')
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
     # ── 基本命令 ──────────────────────────────────────────
 
-    set_parser = subparsers.add_parser('set', help='Set an environment variable')
-    set_parser.add_argument('key', help='Variable name')
-    set_parser.add_argument('value', help='Variable value')
-    set_parser.add_argument(
-        '--secret', '-s', action='store_true',
-        help='Encrypt the value before storing',
-    )
+    set_p = subparsers.add_parser('set', help='Set a variable')
+    set_p.add_argument('key', help='Variable name')
+    set_p.add_argument('value', help='Variable value')
+    set_p.add_argument('--secret', '-s', action='store_true',
+                       help='Encrypt the value')
 
-    get_parser = subparsers.add_parser('get', help='Get an environment variable')
-    get_parser.add_argument('key', help='Variable name')
-    get_parser.add_argument(
-        '--secret', '-s', action='store_true',
-        help='Decrypt the value before displaying',
-    )
+    get_p = subparsers.add_parser('get', help='Get a variable')
+    get_p.add_argument('key', help='Variable name')
+    get_p.add_argument('--secret', '-s', action='store_true',
+                       help='Decrypt the value')
 
-    delete_parser = subparsers.add_parser(
-        'delete', help='Delete an environment variable'
-    )
-    delete_parser.add_argument('key', help='Variable name')
+    del_p = subparsers.add_parser('delete', help='Delete a variable')
+    del_p.add_argument('key', help='Variable name')
 
-    list_parser = subparsers.add_parser(
-        'list', help='List all environment variables'
-    )
-    list_parser.add_argument('pattern', nargs='?', help='Filter pattern')
-    list_parser.add_argument(
-        '--group', '-g', help='List variables in a specific group'
-    )
-    list_parser.add_argument(
-        '--show-groups', action='store_true',
-        help='Group output by namespace',
-    )
-    list_parser.add_argument(
-        '--no-prefix', action='store_true',
-        help='Show only variable names without group prefix',
-    )
+    list_p = subparsers.add_parser('list', help='List all variables')
+    list_p.add_argument('pattern', nargs='?', help='Filter pattern')
+    list_p.add_argument('--group', '-g', help='Filter by group')
+    list_p.add_argument('--show-groups', action='store_true',
+                        help='Group output by namespace')
+    list_p.add_argument('--no-prefix', action='store_true',
+                        help='Remove group prefix from display')
 
-    subparsers.add_parser('clear', help='Clear all environment variables')
+    subparsers.add_parser('clear', help='Clear all variables')
 
     # ── 分组命令 ──────────────────────────────────────────
 
     subparsers.add_parser('groups', help='List all groups')
 
-    setg_parser = subparsers.add_parser(
-        'setg', help='Set a variable in a specific group'
-    )
-    setg_parser.add_argument('group', help='Group name')
-    setg_parser.add_argument('key', help='Variable name')
-    setg_parser.add_argument('value', help='Variable value')
+    setg_p = subparsers.add_parser('setg', help='Set a grouped variable')
+    setg_p.add_argument('group')
+    setg_p.add_argument('key')
+    setg_p.add_argument('value')
 
-    getg_parser = subparsers.add_parser(
-        'getg', help='Get a variable from a specific group'
-    )
-    getg_parser.add_argument('group', help='Group name')
-    getg_parser.add_argument('key', help='Variable name')
+    getg_p = subparsers.add_parser('getg', help='Get a grouped variable')
+    getg_p.add_argument('group')
+    getg_p.add_argument('key')
 
-    deleteg_parser = subparsers.add_parser(
-        'deleteg', help='Delete a variable from a specific group'
-    )
-    deleteg_parser.add_argument('group', help='Group name')
-    deleteg_parser.add_argument('key', help='Variable name')
+    delg_p = subparsers.add_parser('deleteg', help='Delete a grouped variable')
+    delg_p.add_argument('group')
+    delg_p.add_argument('key')
 
-    listg_parser = subparsers.add_parser(
-        'listg', help='List variables in a specific group'
-    )
-    listg_parser.add_argument('group', help='Group name')
-    listg_parser.add_argument(
-        '--no-prefix', action='store_true',
-        help='Show only variable names without group prefix',
-    )
+    listg_p = subparsers.add_parser('listg', help='List variables in a group')
+    listg_p.add_argument('group')
+    listg_p.add_argument('--no-prefix', action='store_true')
 
-    delete_group_parser = subparsers.add_parser(
-        'delete-group', help='Delete an entire group'
-    )
-    delete_group_parser.add_argument('group', help='Group name')
+    dg_p = subparsers.add_parser('delete-group', help='Delete an entire group')
+    dg_p.add_argument('group')
 
-    move_group_parser = subparsers.add_parser(
-        'move-group', help='Move a variable to a different group'
-    )
-    move_group_parser.add_argument('key', help='Variable name')
-    move_group_parser.add_argument('group', help='Target group name')
+    mg_p = subparsers.add_parser('move-group', help='Move variable to group')
+    mg_p.add_argument('key')
+    mg_p.add_argument('group')
 
     # ── 导入导出 ──────────────────────────────────────────
 
-    export_parser = subparsers.add_parser(
-        'export', help='Export environment variables'
-    )
-    export_parser.add_argument(
-        '--format', '-f', choices=['json', 'env', 'sh'],
-        default='json', help='Export format (default: json)',
-    )
-    export_parser.add_argument('--output', '-o', help='Output file path')
-    export_parser.add_argument(
-        '--group', '-g', help='Export variables from a specific group'
-    )
+    exp_p = subparsers.add_parser('export', help='Export variables')
+    exp_p.add_argument('--format', '-f', choices=['json', 'env', 'sh'],
+                       default='json')
+    exp_p.add_argument('--output', '-o', help='Output file path')
+    exp_p.add_argument('--group', '-g', help='Export from group')
 
-    load_parser = subparsers.add_parser(
-        'load', help='Load environment variables from file'
-    )
-    load_parser.add_argument('file', help='Input file path')
-    load_parser.add_argument(
-        '--format', '-f', choices=['json', 'env', 'backup'],
-        help='Force file format (default: auto-detect)',
-    )
-    load_parser.add_argument(
-        '--replace', '-r', action='store_true',
-        help='Replace existing variables instead of merging',
-    )
-    load_parser.add_argument(
-        '--group', '-g', help='Add imported variables to a specific group'
-    )
-    load_parser.add_argument(
-        '--nest', '-n', action='store_true',
-        help='Treat first-level keys as group names (for nested JSON)',
-    )
+    ld_p = subparsers.add_parser('load', help='Load from file')
+    ld_p.add_argument('file', help='Input file')
+    ld_p.add_argument('--format', '-f', choices=['json', 'env', 'backup'])
+    ld_p.add_argument('--replace', '-r', action='store_true')
+    ld_p.add_argument('--group', '-g')
+    ld_p.add_argument('--nest', '-n', action='store_true')
 
     # ── 备份恢复 ──────────────────────────────────────────
 
-    backup_parser = subparsers.add_parser(
-        'backup', help='Backup environment variables'
-    )
-    backup_parser.add_argument(
-        '--file', '-f',
-        help='Backup file path (default: ~/.evm/backup_<timestamp>.json)',
-    )
+    bk_p = subparsers.add_parser('backup', help='Backup variables')
+    bk_p.add_argument('--file', '-f', help='Backup file path')
 
-    restore_parser = subparsers.add_parser(
-        'restore', help='Restore environment variables from backup'
-    )
-    restore_parser.add_argument('file', help='Backup file path')
-    restore_parser.add_argument(
-        '--merge', '-m', action='store_true',
-        help='Merge with existing variables instead of replacing',
-    )
+    rs_p = subparsers.add_parser('restore', help='Restore from backup')
+    rs_p.add_argument('file')
+    rs_p.add_argument('--merge', '-m', action='store_true')
 
-    # ── 搜索 ──────────────────────────────────────────────
+    # ── 搜索/重命名/复制 ──────────────────────────────────
 
-    search_parser = subparsers.add_parser(
-        'search', help='Search environment variables'
-    )
-    search_parser.add_argument('pattern', help='Search pattern')
-    search_parser.add_argument(
-        '--value', '-v', action='store_true', help='Search in values as well'
-    )
+    sr_p = subparsers.add_parser('search', help='Search variables')
+    sr_p.add_argument('pattern')
+    sr_p.add_argument('--value', '-v', action='store_true')
 
-    # ── 其他命令 ──────────────────────────────────────────
+    rn_p = subparsers.add_parser('rename', help='Rename a variable')
+    rn_p.add_argument('old_key')
+    rn_p.add_argument('new_key')
 
-    rename_parser = subparsers.add_parser(
-        'rename', help='Rename an environment variable'
-    )
-    rename_parser.add_argument('old_key', help='Current variable name')
-    rename_parser.add_argument('new_key', help='New variable name')
+    cp_p = subparsers.add_parser('copy', help='Copy a variable')
+    cp_p.add_argument('src_key')
+    cp_p.add_argument('dst_key')
 
-    copy_parser = subparsers.add_parser(
-        'copy', help='Copy an environment variable'
-    )
-    copy_parser.add_argument('src_key', help='Source variable name')
-    copy_parser.add_argument('dst_key', help='Destination variable name')
+    # ── 执行/内存 ─────────────────────────────────────────
 
-    exec_parser = subparsers.add_parser(
-        'exec', help='Execute command with environment variables'
-    )
-    exec_parser.add_argument('exec_args', nargs='+', help='Command to execute')
+    ex_p = subparsers.add_parser('exec', help='Execute with env vars')
+    ex_p.add_argument('exec_args', nargs='+')
 
-    loadmem_parser = subparsers.add_parser(
-        'loadmemory',
-        help='Load environment variables from file to system memory',
-    )
-    loadmem_parser.add_argument(
-        '--prefix', '-p',
-        help='Only load variables with keys starting with this prefix',
-    )
-    loadmem_parser.add_argument(
-        '--no-prefix', action='store_true',
-        help='Do not add EVM: prefix to variable names',
-    )
+    lm_p = subparsers.add_parser('loadmemory', help='Load to os.environ')
+    lm_p.add_argument('--prefix', '-p')
+    lm_p.add_argument('--no-prefix', action='store_true')
+
+    # ── 编辑/信息/Diff/展开 ───────────────────────────────
+
+    ed_p = subparsers.add_parser('edit', help='Edit value in $EDITOR')
+    ed_p.add_argument('key')
+
+    subparsers.add_parser('info', help='Show tool information')
+
+    df_p = subparsers.add_parser('diff', help='Compare with backup')
+    df_p.add_argument('file')
+
+    xp_p = subparsers.add_parser('expand', help='Expand {{VAR}} templates')
+    xp_p.add_argument('key')
 
     # ── P2 新功能 ─────────────────────────────────────────
 
-    edit_parser = subparsers.add_parser(
-        'edit', help='Edit a variable value in $EDITOR'
-    )
-    edit_parser.add_argument('key', help='Variable name to edit')
+    # validate
+    vl_p = subparsers.add_parser('validate', help='Validate against schema')
+    vl_p.add_argument('key', nargs='?', help='Variable (omit for all)')
 
-    subparsers.add_parser('info', help='Show tool and storage information')
+    # history
+    hi_p = subparsers.add_parser('history', help='Show operation history')
+    hi_p.add_argument('--limit', '-n', type=int, default=20,
+                      help='Number of entries to show')
+    hi_p.add_argument('--clear', action='store_true',
+                      help='Clear all history')
 
-    diff_parser = subparsers.add_parser(
-        'diff', help='Compare current state with a backup file'
-    )
-    diff_parser.add_argument('file', help='Backup file to compare with')
+    # schema
+    sc_p = subparsers.add_parser('schema', help='Manage variable schemas')
+    sc_sub = sc_p.add_subparsers(dest='schema_command', help='Schema subcommand')
 
-    expand_parser = subparsers.add_parser(
-        'expand', help='Expand template references in a variable value'
-    )
-    expand_parser.add_argument('key', help='Variable name to expand')
+    sc_set = sc_sub.add_parser('set', help='Set schema for a variable')
+    sc_set.add_argument('key')
+    sc_set.add_argument('--format', '-f',
+                        choices=['url', 'email', 'port', 'integer',
+                                 'boolean', 'path', 'ipv4', 'ipv6'],
+                        help='Built-in format')
+    sc_set.add_argument('--required', '-r', action='store_true',
+                        help='Mark as required')
+    sc_set.add_argument('--pattern', '-p', help='Custom regex pattern')
+    sc_set.add_argument('--description', '-d', help='Description')
+
+    sc_get = sc_sub.add_parser('get', help='Get schema definition')
+    sc_get.add_argument('key', nargs='?', help='Variable (omit for all)')
+
+    sc_del = sc_sub.add_parser('delete', help='Remove schema definition')
+    sc_del.add_argument('key')
+
+    sc_list = sc_sub.add_parser('list', help='List all schema definitions')
+
+    sc_val = sc_sub.add_parser('validate', help='Validate against schema')
+    sc_val.add_argument('key', nargs='?', help='Variable (omit for all)')
+
+    # completion
+    co_p = subparsers.add_parser('completion', help='Generate shell completion')
+    co_p.add_argument('shell', choices=['bash', 'zsh', 'fish'],
+                      help='Shell type')
 
     return parser
 
 
+def _confirm(message: str) -> bool:
+    """交互式确认（非交互模式或 stdin 非终端时返回 False）"""
+    if not sys.stdin.isatty():
+        return False
+    try:
+        response = input(f"{message} [y/N] ").strip().lower()
+        return response in ('y', 'yes')
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
 def main(argv: Optional[List[str]] = None) -> int:
-    """主入口
-
-    Args:
-        argv: 命令行参数（None 时使用 sys.argv）
-
-    Returns:
-        退出码（0=成功，1=错误）
-    """
+    """主入口"""
     parser = create_parser()
     args = parser.parse_args(argv)
 
-    # --verbose: 显示详细信息
     if args.verbose:
         mgr = EnvironmentManager(args.env_file)
         print_info(mgr.info())
@@ -305,11 +279,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     dry_run = getattr(args, 'dry_run', False)
+    force = getattr(args, 'force', False)
 
     try:
         mgr = EnvironmentManager(args.env_file)
-        _dispatch(mgr, args, dry_run)
+        _dispatch(mgr, args, dry_run, force)
         return 0
+    except OperationCancelledError:
+        print("Operation cancelled.", file=sys.stderr)
+        return 1
     except GroupNotFoundError as e:
         print(str(e), file=sys.stderr)
         return 1
@@ -324,7 +302,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
 
-def _dispatch(mgr: EnvironmentManager, args, dry_run: bool) -> None:
+def _dispatch(mgr: EnvironmentManager, args, dry_run: bool, force: bool) -> None:
     """命令调度"""
     cmd = args.command
 
@@ -348,7 +326,6 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool) -> None:
     elif cmd == 'list':
         no_prefix = getattr(args, 'no_prefix', False)
         if getattr(args, 'show_groups', False):
-            # show_groups 需要获取所有变量然后按组展示
             if args.group:
                 filtered = mgr.list_vars(group=args.group)
             elif args.pattern:
@@ -365,6 +342,12 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool) -> None:
             print_vars_table(result)
 
     elif cmd == 'clear':
+        if not dry_run and not force:
+            count = len(mgr._env_vars)
+            if count > 0 and not _confirm(
+                f"This will clear all {count} variables. Continue?"
+            ):
+                raise OperationCancelledError("clear")
         print(mgr.clear(dry_run=dry_run))
 
     # ── 分组命令 ──────────────────────────────────────────
@@ -387,6 +370,11 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool) -> None:
         print_vars_table(result)
 
     elif cmd == 'delete-group':
+        if not dry_run and not force:
+            if not _confirm(
+                f"This will delete group '{args.group}' and all its variables. Continue?"
+            ):
+                raise OperationCancelledError("delete-group")
         print(mgr.delete_group(args.group, dry_run=dry_run))
 
     elif cmd == 'move-group':
@@ -420,13 +408,11 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool) -> None:
     elif cmd == 'restore':
         print(mgr.restore(args.file, merge=getattr(args, 'merge', False)))
 
-    # ── 搜索 ──────────────────────────────────────────────
+    # ── 搜索/重命名/复制 ──────────────────────────────────
 
     elif cmd == 'search':
         results = mgr.search(args.pattern, search_value=getattr(args, 'value', False))
         print_search_results(results, args.pattern, getattr(args, 'value', False))
-
-    # ── 其他命令 ──────────────────────────────────────────
 
     elif cmd == 'rename':
         print(mgr.rename(args.old_key, args.new_key, dry_run=dry_run))
@@ -434,19 +420,21 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool) -> None:
     elif cmd == 'copy':
         print(mgr.copy(args.src_key, args.dst_key, dry_run=dry_run))
 
+    # ── 执行/内存 ─────────────────────────────────────────
+
     elif cmd == 'exec':
         mgr.execute(args.exec_args)
 
     elif cmd == 'loadmemory':
         filter_prefix = getattr(args, 'prefix', None)
         add_evm_prefix = not getattr(args, 'no_prefix', False)
-        loaded_count, prefix_used, filter_used = mgr.load_to_memory(
+        loaded, prefix_used, filter_used = mgr.load_to_memory(
             filter_prefix=filter_prefix,
             add_evm_prefix=add_evm_prefix,
         )
-        print_load_memory_result(loaded_count, prefix_used, filter_used)
+        print_load_memory_result(loaded, prefix_used, filter_used)
 
-    # ── P2 新功能 ─────────────────────────────────────────
+    # ── 编辑/信息/Diff/展开 ───────────────────────────────
 
     elif cmd == 'edit':
         print(mgr.edit(args.key))
@@ -458,13 +446,85 @@ def _dispatch(mgr: EnvironmentManager, args, dry_run: bool) -> None:
         print_diff(mgr.diff(args.file))
 
     elif cmd == 'expand':
-        expanded = mgr.expand(args.key)
-        print(expanded)
+        print(mgr.expand(args.key))
+
+    # ── P2 新功能 ─────────────────────────────────────────
+
+    elif cmd == 'validate':
+        key = getattr(args, 'key', None)
+        if key:
+            result = mgr.validate(key)
+            print_validate_result(key, result)
+        else:
+            results = mgr.validate_all()
+            print_validate_all(results)
+
+    elif cmd == 'history':
+        if getattr(args, 'clear', False):
+            print(mgr.clear_history())
+        else:
+            entries = mgr.get_history(limit=args.limit)
+            print_history(entries)
+
+    elif cmd == 'schema':
+        _dispatch_schema(mgr, args)
+
+    elif cmd == 'completion':
+        generator = SHELL_GENERATORS.get(args.shell)
+        if generator:
+            script = generator(ALL_COMMANDS)
+            print(script, end='')
+        else:
+            print(f"Unsupported shell: {args.shell}", file=sys.stderr)
+            raise SystemExit(1)
 
     else:
-        # 未知命令（不应到达此处）
         print(f"Unknown command: {cmd}", file=sys.stderr)
         raise SystemExit(1)
 
 
-__all__ = ['create_parser', 'main']
+def _dispatch_schema(mgr: EnvironmentManager, args) -> None:
+    """Schema 子命令调度"""
+    sc_cmd = getattr(args, 'schema_command', None)
+
+    if sc_cmd == 'set':
+        required = None
+        if getattr(args, 'required', False):
+            required = True
+        msg = mgr.set_schema(
+            args.key,
+            format=getattr(args, 'format', None),
+            required=required,
+            pattern=getattr(args, 'pattern', None),
+            description=getattr(args, 'description', None),
+        )
+        print(msg)
+
+    elif sc_cmd == 'get':
+        key = getattr(args, 'key', None)
+        schema = mgr.get_schema(key)
+        print_schema(schema)
+
+    elif sc_cmd == 'delete':
+        print(mgr.delete_schema(args.key))
+
+    elif sc_cmd == 'list':
+        schema = mgr.get_schema()
+        print_schema(schema)
+
+    elif sc_cmd == 'validate':
+        key = getattr(args, 'key', None)
+        if key:
+            result = mgr.validate(key)
+            print_validate_result(key, result)
+        else:
+            results = mgr.validate_all()
+            print_validate_all(results)
+
+    else:
+        # 无子命令时显示 schema 列表
+        schema = mgr.get_schema()
+        print_schema(schema)
+
+
+__all__ = ['create_parser', 'main', 'ALL_COMMANDS']

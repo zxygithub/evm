@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-05-30
+
+### Architecture (P1)
+- **Module decomposition**: Split `manager.py` into mixin-based modules:
+  - `_io.py` — IOMixin (import/export/backup/restore/diff)
+  - `_groups.py` — GroupMixin (namespace management)
+  - `_history.py` — HistoryMixin (operation logging)
+  - `_schema.py` — SchemaMixin (format validation)
+- **`load()` refactored**: Split into `_detect_format()`, `_load_json_file()`, `_load_env_file()`, `_load_nested()`, `_apply_group_prefix()` — each independently testable
+- **File lock timeout**: `fcntl.flock` now uses `LOCK_NB` with configurable timeout (default 5s), raises `LockTimeoutError` instead of blocking indefinitely
+- **Encryption enhanced**: PBKDF2-HMAC-SHA256 key derivation (100k iterations) + HMAC integrity verification. Format: `ENCv2:<salt>:<hmac>:<ciphertext>`. Backward compatible with v1 (`ENC:`) secrets
+
+### Features (P2)
+- **`evm validate [KEY]`**: Validate variables against schema definitions. Supports formats: url, email, port, integer, boolean, path, ipv4, ipv6, plus custom regex patterns
+- **`evm schema set|get|delete|list|validate`**: Full schema management — define formats, required flags, custom patterns, and descriptions for variables
+- **`evm history [--limit N] [--clear]`**: Operation audit log stored as JSONL. Tracks set/delete/rename/copy/clear/edit/set_secret with timestamps
+- **`evm completion bash|zsh|fish`**: Generate shell completion scripts for all three major shells
+- **Interactive confirmation**: `clear` and `delete-group` now prompt for confirmation before executing. Use `--force` to skip
+- **`--force` global flag**: Skip confirmation for destructive operations
+
+### New Exceptions
+- `LockTimeoutError` — file lock acquisition timeout
+- `ValidationError` — variable value format mismatch
+- `SchemaError` — schema definition errors
+- `OperationCancelledError` — user cancelled destructive operation
+
+### Changed
+- Entry point remains `evm.cli:main`
+- `EnvironmentManager` now inherits from `IOMixin`, `GroupMixin`, `HistoryMixin`, `SchemaMixin`
+- Test suite expanded from 101 to 150 tests
+- Version bumped to 1.8.0
+
 ## [1.7.0] - 2026-05-30
 
 ### Security (P0)

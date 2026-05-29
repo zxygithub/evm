@@ -6,7 +6,7 @@ EVM 输出格式化
 所有 print() 调用集中在此模块。
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 
 def print_vars_table(
@@ -173,6 +173,86 @@ def print_load_memory_result(
             print(f"No variables found with prefix '{filter_prefix}'")
 
 
+def print_history(entries: List[dict]) -> None:
+    """打印操作历史"""
+    if not entries:
+        print("No history entries found.")
+        return
+
+    print(f"\nOperation History (latest {len(entries)} entries):")
+    print("-" * 80)
+    for entry in entries:
+        ts = entry.get('timestamp', '')[:19]
+        op = entry.get('operation', '')
+        key = entry.get('key', '')
+        details = entry.get('details', '')
+        status = entry.get('status', '')
+        status_mark = '✓' if status == 'success' else '✗'
+        line = f"  {ts}  {status_mark} {op:<12}"
+        if key:
+            line += f" {key}"
+        if details:
+            line += f"  ({details})"
+        print(line)
+    print("-" * 80)
+
+
+def print_validate_result(key: str, result: Dict) -> None:
+    """打印单个变量的校验结果"""
+    if result['valid']:
+        print(f"  ✓ {key}: valid")
+    else:
+        print(f"  ✗ {key}: INVALID")
+    for err in result.get('errors', []):
+        print(f"      error: {err}")
+    for warn in result.get('warnings', []):
+        print(f"      warning: {warn}")
+
+
+def print_validate_all(results: Dict[str, Dict]) -> None:
+    """打印所有变量的校验结果"""
+    if not results:
+        print("No schema definitions found.")
+        return
+
+    valid_count = sum(1 for r in results.values() if r['valid'])
+    total = len(results)
+
+    print(f"\nSchema Validation ({valid_count}/{total} valid):")
+    print("-" * 60)
+    for key in sorted(results):
+        print_validate_result(key, results[key])
+    print("-" * 60)
+    if valid_count == total:
+        print("All variables passed validation.")
+    else:
+        print(f"{total - valid_count} variable(s) failed validation.")
+
+
+def print_schema(schema: Dict) -> None:
+    """打印 schema 定义"""
+    if not schema:
+        print("No schema definitions found.")
+        return
+
+    print("\nSchema Definitions:")
+    print("-" * 60)
+    for key in sorted(schema):
+        entry = schema[key]
+        parts = []
+        if 'format' in entry:
+            parts.append(f"format={entry['format']}")
+        if 'required' in entry:
+            parts.append(f"required={entry['required']}")
+        if 'pattern' in entry:
+            parts.append(f"pattern={entry['pattern']}")
+        if 'description' in entry:
+            parts.append(f"desc={entry['description']}")
+        print(f"  {key:<30} {', '.join(parts)}")
+    print("-" * 60)
+    print(f"Total: {len(schema)} definitions")
+
+
 __all__ = [
     'print_vars_table',
     'print_vars_by_group',
@@ -181,4 +261,8 @@ __all__ = [
     'print_info',
     'print_diff',
     'print_load_memory_result',
+    'print_history',
+    'print_validate_result',
+    'print_validate_all',
+    'print_schema',
 ]

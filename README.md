@@ -2,7 +2,7 @@
 
 A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
-**Version**: 1.7.0
+**Version**: 1.8.0
 
 ## Features
 
@@ -13,11 +13,16 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 - ✅ **Groups**: Namespace-based organization
 - ✅ **Execute**: Run commands with custom environment
 - ✅ **Load to Memory**: Sync variables to system environment
-- ✅ **Secrets**: Encrypted storage for sensitive variables
+- ✅ **Secrets**: PBKDF2+HMAC encrypted storage with v1 backward compatibility
 - ✅ **Templates**: `{{VAR}}` reference expansion
 - ✅ **Diff**: Compare current state with backups
 - ✅ **Dry-run**: Preview changes before writing
-- ✅ **Secure**: Shell-safe export, chmod 600, atomic writes
+- ✅ **Validate**: Schema-based variable value validation (URL, email, port, etc.)
+- ✅ **Schema**: Define and enforce variable formats and constraints
+- ✅ **History**: Operation audit log with JSONL storage
+- ✅ **Shell Completion**: bash, zsh, fish completion script generation
+- ✅ **Interactive Safety**: Confirmation prompts for destructive operations (`--force` to skip)
+- ✅ **Secure**: Shell-safe export, chmod 600, atomic writes, file lock with timeout
 - ✅ **Pure Python**: No external dependencies, Python 3.6+
 
 ## Project Structure
@@ -28,11 +33,16 @@ evm/
 │   ├── __init__.py           # Package init, version info
 │   ├── __main__.py           # Module entry point
 │   ├── cli.py                # CLI parsing and command dispatch
-│   ├── manager.py            # Core business logic
+│   ├── manager.py            # Core business logic (CRUD, encryption, templates)
+│   ├── _io.py                # IOMixin (import/export/backup/restore/diff)
+│   ├── _groups.py            # GroupMixin (namespace management)
+│   ├── _history.py           # HistoryMixin (operation logging)
+│   ├── _schema.py            # SchemaMixin (format validation)
+│   ├── _completion.py        # Shell completion generators (bash/zsh/fish)
 │   ├── formatters.py         # Terminal output formatting
-│   └── exceptions.py         # Custom exception hierarchy
+│   └── exceptions.py         # Custom exception hierarchy (17 classes)
 ├── examples/                 # Example scripts
-├── tests/                    # Test suite (101 tests)
+├── tests/                    # Test suite (150 tests)
 │   ├── test_main.py          # Unit + integration tests
 │   ├── run_tests.py          # Integration test runner
 │   └── test_case/            # Test configuration files
@@ -233,6 +243,71 @@ evm --dry-run delete EXISTING_KEY
 evm --dry-run clear
 ```
 
+### Schema & Validate
+
+```bash
+# Define schemas for variables
+evm schema set API_URL --format url --required
+evm schema set PORT --format port
+evm schema set EMAIL --format email --description "Admin email"
+
+# Available formats: url, email, port, integer, boolean, path, ipv4, ipv6
+# Custom regex also supported:
+evm schema set CODE --pattern '^[A-Z]{3}-\d{4}$'
+
+# List all schemas
+evm schema list
+
+# Validate a specific variable
+evm validate API_URL
+
+# Validate all variables with schemas
+evm validate
+
+# Delete a schema
+evm schema delete API_URL
+```
+
+### History
+
+```bash
+# View operation history (latest first)
+evm history
+
+# Show more entries
+evm history --limit 50
+
+# Clear history
+evm history --clear
+```
+
+### Shell Completion
+
+```bash
+# Generate and install bash completion
+evm completion bash > ~/.evm-completion.bash
+echo 'source ~/.evm-completion.bash' >> ~/.bashrc
+
+# zsh
+evm completion zsh > ~/.evm-completion.zsh
+echo 'source ~/.evm-completion.zsh' >> ~/.zshrc
+
+# fish
+evm completion fish > ~/.config/fish/completions/evm.fish
+```
+
+### Interactive Safety
+
+```bash
+# clear and delete-group now prompt for confirmation
+evm clear                        # Asks: "This will clear all N variables. Continue? [y/N]"
+evm delete-group dev             # Asks: "This will delete group 'dev'... Continue? [y/N]"
+
+# Skip confirmation with --force
+evm --force clear
+evm --force delete-group dev
+```
+
 ## Python API
 
 EVM can also be used as a Python library:
@@ -240,13 +315,31 @@ EVM can also be used as a Python library:
 ```python
 from evm.manager import EnvironmentManager
 from evm.exceptions import EVMError, KeyNotFoundError
-from evm.formatters import print_vars_table
+from evm.formatters import print_vars_table, print_validate_all
 
 manager = EnvironmentManager()
+
+# Basic operations
 manager.set('API_KEY', 'secret123')
 value = manager.get('API_KEY')
 manager.set_grouped('dev', 'DEBUG', 'true')
+
+# Encrypted secrets (PBKDF2+HMAC, v1 backward compatible)
 manager.set_secret('DB_PASS', 'encrypted_value')
+plain = manager.get_secret('DB_PASS')
+
+# Schema validation
+manager.set_schema('API_URL', format='url', required=True)
+result = manager.validate('API_URL')
+all_results = manager.validate_all()
+
+# Operation history
+history = manager.get_history(limit=10)
+
+# Template expansion
+manager.set('HOST', 'example.com')
+manager.set('URL', 'https://{{HOST}}/api')
+expanded = manager.expand('URL')  # → https://example.com/api
 
 # List variables
 print_vars_table(manager.list_vars())

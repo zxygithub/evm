@@ -1,0 +1,130 @@
+
+======================================================================
+CI/CD Pipeline Environment Management Demo
+======================================================================
+Using EVM Python API with proper exception handling
+Storage: /tmp/eval5_test.json
+Config source: /tmp/eval5_config.json
+
+======================================================================
+Step 1: Initialize EnvironmentManager
+======================================================================
+✓ EnvironmentManager initialized successfully
+  Storage path: /tmp/eval5_test.json
+  Current variables: 0
+
+======================================================================
+Step 2: Import Configuration from JSON
+======================================================================
+✓ Configuration imported successfully
+  Imported 7 variables:
+    - DATABASE_URL: postgresql://prod...
+    - API_KEY: prod-api-key-xyz789
+    - API_URL: https://api.examp...
+    - PORT: 8443
+    - APP_NAME: MyApp
+    - DEBUG: false
+    - CACHE_TTL: 3600
+
+======================================================================
+Step 3: Define Validation Schemas
+======================================================================
+✓ Schema defined for DATABASE_URL
+    Format: any
+    Required: True
+    Description: Database connection string (postgresql, mysql, etc.)
+✓ Schema defined for API_URL
+    Format: url
+    Required: True
+    Description: API endpoint URL (http/https)
+✓ Schema defined for PORT
+    Format: port
+    Required: True
+    Description: Application port number
+✓ Schema defined for APP_NAME
+    Format: any
+    Required: True
+    Description: Application name
+✓ Schema defined for DEBUG
+    Format: boolean
+    Required: False
+    Description: Debug mode flag
+✓ Schema defined for CACHE_TTL
+    Format: integer
+    Required: False
+    Description: Cache time-to-live in seconds
+
+======================================================================
+Step 4: Validate Configuration
+======================================================================
+Validation Results:
+----------------------------------------------------------------------
+✓ VALID: DATABASE_URL
+✓ VALID: API_URL
+✓ VALID: PORT
+✓ VALID: APP_NAME
+✓ VALID: DEBUG
+✓ VALID: CACHE_TTL
+----------------------------------------------------------------------
+Summary: 6 valid, 0 invalid, 0 warnings
+
+✓ Configuration validation PASSED
+  CI/CD pipeline can proceed
+
+======================================================================
+Step 5: Error Handling Examples
+======================================================================
+
+Example 1: Handling KeyNotFoundError
+  ✓ Caught KeyNotFoundError: Environment variable 'NONEXISTENT_VAR' not found
+
+Example 2: Handling KeyAlreadyExistsError
+  ✓ Variable updated (set allows overwrite)
+
+Example 3: Handling LockTimeoutError
+  (Simulated - would occur with concurrent access)
+  ✓ Lock acquired successfully
+
+Example 4: Handling SchemaError
+  ✓ Caught SchemaError: Unknown format 'nonexistent_format'. Available: boolean, email, integer, ipv4, ipv6, path, port, url
+
+Example 5: Generic EVMError catch-all
+  ✓ Operation succeeded
+    EVM version: 2.0.0
+
+======================================================================
+Step 6: Export Validated Configuration
+======================================================================
+✓ Configuration exported successfully
+  Export file: /tmp/eval5_export.json
+  Exported 8 variables
+
+======================================================================
+Step 7: Operation History
+======================================================================
+Last 10 operations:
+  [2026-05-30T02:55:42.804525] set: TEST_VAR
+  [2026-05-30T02:55:42.804102] set: DATABASE_URL
+  [2026-05-30T02:51:43.966405] set: TEST_VAR
+  [2026-05-30T02:51:43.965962] set: DATABASE_URL
+  [2026-05-30T02:46:48.160582] set: APP_NAME
+  [2026-05-30T02:46:48.123892] set: DB_PORT
+  [2026-05-30T02:46:48.086598] set: DB_HOST
+  [2026-05-30T02:46:48.047112] clear: 
+  [2026-05-30T02:46:15.362683] set: DATABASE_URL
+  [2026-05-30T02:45:40.787745] set: DATABASE_URL
+
+======================================================================
+CI/CD Pipeline Summary
+======================================================================
+✓ EnvironmentManager initialized
+✓ Configuration imported from JSON
+✓ Schemas defined for validation
+✓ All variables validated successfully
+✓ Error handling demonstrated with specific exceptions
+✓ Configuration exported
+✓ Operation history recorded
+
+======================================================================
+CI/CD pipeline can proceed with validated configuration
+======================================================================

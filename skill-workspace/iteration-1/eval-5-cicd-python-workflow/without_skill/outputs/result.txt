@@ -1,0 +1,56 @@
+============================================================
+EVM Python API - CI/CD Workflow Demo (Baseline)
+============================================================
+
+1. Creating fresh EVM config...
+   Initialized: /tmp/eval5_baseline.json
+
+2. Setting CI/CD variables...
+   Set 5 variables
+
+3. Creating and importing JSON config...
+   Import result: Loaded 3 environment variables from /tmp/eval5_baseline_config.json
+
+4. Setting up validation schemas...
+   DATABASE_URL: url format
+   REDIS_URL: url format
+   DEBUG: boolean format
+   CACHE_TTL: integer format
+   MAX_CONNECTIONS: integer format
+
+5. Validating all variables against schemas...
+   [PASS] API_URL
+   [PASS] CACHE_TTL
+   [FAIL] DATABASE_URL
+          error: Value 'postgresql://localhost:5432/mydb' does not match format 'url'
+   [PASS] DEBUG
+   [PASS] MAX_CONNECTIONS
+   [PASS] PORT
+   [FAIL] REDIS_URL
+          error: Value 'redis://localhost:6379' does not match format 'url'
+
+6. Testing error handling...
+   Testing KeyNotFoundError...
+   Caught KeyNotFoundError: Environment variable 'NONEXISTENT_VAR' not found
+   Testing SchemaError (invalid URL)...
+   Validation failed (expected): ["Value 'not-a-valid-url' does not match format 'url'"]
+   Testing SchemaError (no schema defined)...
+   Caught SchemaError: No schema defined for 'APP_NAME'
+
+7. Exporting validated config...
+   Export result: Environment variables exported to: /tmp/eval5_baseline_export.json
+
+8. Final environment state...
+   Total variables: 8
+   API_KEY = sk-test-12345
+   APP_NAME = my-cicd-app
+   CACHE_TTL = 300
+   DATABASE_URL = postgresql://localhost:5432/mydb
+   DEBUG = false
+   LOG_LEVEL = info
+   MAX_CONNECTIONS = 10
+   REDIS_URL = redis://localhost:6379
+
+============================================================
+CI/CD Workflow Demo Complete
+============================================================

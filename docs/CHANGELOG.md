@@ -30,12 +30,21 @@ Based on the v2.2.0 code review, this release addresses all High and Medium prio
 - **`history.jsonl` file locking** — Write operations now use `fcntl.flock(LOCK_EX)` to prevent line interleaving in concurrent scenarios.
 - **Makefile `format` target** — Updated from `black` to `ruff format`.
 
+#### Documentation
+- **Python API Reference** (`docs/API_REFERENCE.md`) — Comprehensive API documentation covering all 36 public methods of `EnvironmentManager`, the full exception hierarchy (17 classes), formatters module, crypto module, CLI exit codes, and quick-start recipes.
+- **README Python API section** — Updated import paths to use `from evm import ...` (package root), added link to full API reference, added import/export/backup examples.
+- **Project structure** — Updated test count (521) and docs listing in README.
+
 #### Test Improvements
-- **Total tests: 360 → 392** (+32 tests)
-- **Total coverage: 89% → 90%**
-- **`_completion.py`: 100%** (was 100%, expanded content)
+- **Total tests: 360 → 521** (+161 tests across 3 rounds of additions)
+- **Total coverage: 89% → 94%**
+- **`_completion.py`: 100%**
 - **`_typing.py`: 0% → 100%** (protocol now used by all mixins)
-- New test file: `tests/test_v230_fixes.py` — 32 tests covering all review fixes
+- **`formatters.py`: 100%** (dynamic terminal width via `shutil.get_terminal_size()`)
+- New test files:
+  - `tests/test_v230_fixes.py` — 45 tests covering review fixes + encryption error paths
+  - `tests/test_io_boundary.py` — 55 boundary tests for `_io.py`
+  - `tests/test_cli_boundary.py` — 61 boundary tests for `cli.py`
 
 ### Verification
 ```bash
@@ -46,10 +55,10 @@ $ ruff check .
 All checks passed!
 
 $ pytest tests/ -v
-============================= 392 passed in 2.45s ==============================
+============================= 521 passed in 4.06s ==============================
 
 $ pytest --cov=evm --cov-report=term-missing tests/
-TOTAL                 1646    171    90%
+TOTAL                 1664    102    94%
 ```
 
 ## [2.2.0] - 2026-05-30

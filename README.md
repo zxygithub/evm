@@ -58,16 +58,21 @@ evm/
 │   ├── formatters.py         # Terminal output formatting
 │   └── exceptions.py         # Custom exception hierarchy (17 classes)
 ├── examples/                 # Example scripts
-├── tests/                    # Test suite (360 tests)
+├── tests/                    # Test suite (521 tests)
 │   ├── test_main.py          # Unit + integration tests
-│   ├── run_tests.py          # Integration test runner
+│   ├── test_io_boundary.py   # _io.py boundary tests
+│   ├── test_cli_boundary.py  # cli.py boundary tests
+│   ├── test_v230_fixes.py    # v2.3.0 code review fix tests
+│   ├── test_formatters.py    # Formatter output tests
 │   └── test_case/            # Test configuration files
 ├── docs/
+│   ├── API_REFERENCE.md      # Python API reference
 │   ├── CHANGELOG.md          # Version history
 │   ├── ANALYSIS.md           # Project analysis report
 │   ├── USER_GUIDE_CN.md      # 中文系统功能说明书
 │   ├── AGENT_CLI_EVALUATION.md
-│   └── CODE_REVIEW.md
+│   ├── CODE_REVIEW.md
+│   └── CODE_REVIEW_v2.2.0.md
 ├── skill/                    # AI Agent Skill (evm-agent)
 ├── pyproject.toml            # PEP 621 project metadata & tool config
 ├── setup.py                  # Backward-compatible setup shim
@@ -580,14 +585,13 @@ evm --env-file /tmp/agent_env.json --json list
 
 ## Python API
 
-EVM can also be used as a Python library:
+EVM can also be used as a Python library. See [**API Reference**](docs/API_REFERENCE.md) for full documentation.
 
 ```python
-from evm.manager import EnvironmentManager
-from evm.exceptions import EVMError, KeyNotFoundError, ImportFailedError
-from evm.formatters import print_vars_table, print_validate_all
+from evm import EnvironmentManager, EVMError, KeyNotFoundError
 
-manager = EnvironmentManager()
+manager = EnvironmentManager()                    # default: ~/.evm/env.json
+# manager = EnvironmentManager('/path/to/env.json')  # custom storage
 
 # Basic operations
 manager.set('API_KEY', 'secret123')
@@ -600,7 +604,7 @@ plain = manager.get_secret('DB_PASS')
 
 # Schema validation
 manager.set_schema('API_URL', format='url', required=True)
-result = manager.validate('API_URL')
+result = manager.validate('API_URL')       # {'valid': True, 'errors': [], 'warnings': []}
 all_results = manager.validate_all()
 
 # Operation history
@@ -609,16 +613,20 @@ history = manager.get_history(limit=10)
 # Template expansion
 manager.set('HOST', 'example.com')
 manager.set('URL', 'https://{{HOST}}/api')
-expanded = manager.expand('URL')  # → https://example.com/api
+expanded = manager.expand('URL')           # → https://example.com/api
 
-# List variables
-print_vars_table(manager.list_vars())
+# Import / Export / Backup
+manager.load('.env')
+manager.export(format_type='env', output_file='.env')
+manager.backup()
 
-# Handle errors properly
+# Error handling — all exceptions inherit EVMError
 try:
     manager.get('MISSING')
 except KeyNotFoundError as e:
     print(f"Not found: {e.key}")
+except EVMError as e:
+    print(f"EVM error: {e}")
 ```
 
 ## Development

@@ -1,0 +1,31 @@
+{
+  "name": "command-execution",
+  "description": "Test command execution with environment variables",
+  "scenario": "Set up environment variables for a Python application, then use exec to run the application. Demonstrate exit code passthrough by running commands that exit with different codes. Show how to handle errors from executed commands.",
+  "success_criteria": [
+    "Sets up environment variables for application",
+    "Uses exec command to run Python script",
+    "Demonstrates exit code passthrough (command exits with non-zero code)",
+    "Shows how to capture and check exit codes",
+    "Handles command not found errors (exit code 10)",
+    "Uses --json where appropriate for verification",
+    "Explains how environment variables are injected"
+  ],
+  "expected_commands": [
+    "evm --env-file <path> set APP_NAME MyApp",
+    "evm --env-file <path> set LOG_LEVEL debug",
+    "evm --env-file <path> exec -- python -c 'import os; print(os.environ.get(\"APP_NAME\"))'",
+    "evm --env-file <path> exec -- python -c 'import sys; sys.exit(42)'",
+    "echo $?  # Should show 42",
+    "evm --env-file <path> exec -- nonexistent-command",
+    "echo $?  # Should show 10 (command not found)"
+  ],
+  "anti_patterns": [
+    "Not checking exit codes from exec",
+    "Not handling command not found errors",
+    "Forgetting to use -- separator before command",
+    "Not verifying environment variables are injected"
+  ],
+  "difficulty": "hard",
+  "estimated_time": "10-15 minutes"
+}

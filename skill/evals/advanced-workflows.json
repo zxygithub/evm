@@ -1,0 +1,42 @@
+{
+  "name": "advanced-workflows",
+  "description": "Test advanced EVM workflows",
+  "scenario": "Combine multiple EVM features in a realistic scenario: Set up a multi-environment project with groups, define schemas for validation, use templates for dynamic URLs, store secrets, create backups, and demonstrate the complete workflow with proper error handling.",
+  "success_criteria": [
+    "Uses groups for environment separation",
+    "Defines schemas with multiple formats",
+    "Creates variables with template references",
+    "Stores encrypted secrets",
+    "Validates all variables against schemas",
+    "Creates backup before changes",
+    "Uses diff to show changes",
+    "Demonstrates complete CI/CD-like workflow",
+    "Handles errors at each step",
+    "Uses --json for all verification"
+  ],
+  "expected_commands": [
+    "evm --env-file <path> setg dev API_HOST localhost",
+    "evm --env-file <path> setg dev API_PORT 3000",
+    "evm --env-file <path> setg prod API_HOST api.example.com",
+    "evm --env-file <path> setg prod API_PORT 443",
+    "evm --env-file <path> setg dev API_URL http://{{dev:API_HOST}}:{{dev:API_PORT}}",
+    "evm --env-file <path> setg prod API_URL https://{{prod:API_HOST}}:{{prod:API_PORT}}",
+    "evm --env-file <path> schema set API_HOST --format url --required",
+    "evm --env-file <path> schema set API_PORT --format port --required",
+    "evm --env-file <path> set --secret dev:API_KEY dev-secret-key",
+    "evm --env-file <path> set --secret prod:API_KEY prod-secret-key",
+    "evm --env-file <path> validate --json",
+    "evm --env-file <path> backup --file backup.json",
+    "evm --env-file <path> expand dev:API_URL --json",
+    "evm --env-file <path> expand prod:API_URL --json"
+  ],
+  "anti_patterns": [
+    "Not combining features coherently",
+    "Skipping validation step",
+    "Not creating backup before changes",
+    "Not using --json for verification",
+    "Ignoring errors at any step"
+  ],
+  "difficulty": "expert",
+  "estimated_time": "20-30 minutes"
+}

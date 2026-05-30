@@ -1,0 +1,31 @@
+{
+  "name": "import-export-workflow",
+  "description": "Test import and export workflows",
+  "scenario": "Import an existing .env file into EVM, verify the import was successful, then export it in three different formats: JSON, shell script, and back to .env. Show how to import a nested JSON file with environment groups.",
+  "success_criteria": [
+    "Creates or uses an existing .env file for import",
+    "Uses load command with correct format detection",
+    "Verifies import with list --json",
+    "Exports to JSON format",
+    "Exports to shell script format (.sh)",
+    "Exports to .env format",
+    "Demonstrates nested JSON import with environment groups",
+    "Uses --json for all verification steps"
+  ],
+  "expected_commands": [
+    "evm --env-file <path> load .env",
+    "evm --env-file <path> list --json",
+    "evm --env-file <path> export --format json --output config.json",
+    "evm --env-file <path> export --format sh --output env.sh",
+    "evm --env-file <path> export --format env --output .env.new",
+    "evm --env-file <path> load nested.json --nest"
+  ],
+  "anti_patterns": [
+    "Not verifying import success before exporting",
+    "Forgetting --format flag when format can't be auto-detected",
+    "Not using --output to specify export destination",
+    "Not checking file permissions on exported files"
+  ],
+  "difficulty": "medium",
+  "estimated_time": "5-7 minutes"
+}

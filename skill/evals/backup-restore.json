@@ -1,0 +1,35 @@
+{
+  "name": "backup-restore",
+  "description": "Test backup and restore workflows",
+  "scenario": "Create a backup of current configuration, make several changes (add, modify, delete variables), then restore from backup. Demonstrate both replace mode (full restore) and merge mode. Use diff to show what changed between backup and current state.",
+  "success_criteria": [
+    "Creates initial configuration with multiple variables",
+    "Creates backup with backup command",
+    "Makes changes to configuration (add, modify, delete)",
+    "Uses diff command to show changes",
+    "Restores from backup in replace mode",
+    "Verifies restoration with list --json",
+    "Demonstrates merge mode restoration",
+    "Uses --json for all verification steps"
+  ],
+  "expected_commands": [
+    "evm --env-file <path> set KEY1 value1",
+    "evm --env-file <path> set KEY2 value2",
+    "evm --env-file <path> backup --file backup.json",
+    "evm --env-file <path> set KEY3 value3",
+    "evm --env-file <path> set KEY1 modified_value1",
+    "evm --env-file <path> delete KEY2",
+    "evm --env-file <path> diff backup.json --json",
+    "evm --env-file <path> restore backup.json",
+    "evm --env-file <path> list --json",
+    "evm --env-file <path> restore backup.json --merge"
+  ],
+  "anti_patterns": [
+    "Not creating backup before making changes",
+    "Not using diff to verify changes",
+    "Confusing replace mode with merge mode",
+    "Not verifying restoration success"
+  ],
+  "difficulty": "medium",
+  "estimated_time": "7-10 minutes"
+}

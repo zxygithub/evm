@@ -429,6 +429,434 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
 
+# ── 命令处理器函数 ──────────────────────────────────────────
+
+def _cmd_set(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 set 命令"""
+    if getattr(args, 'secret', False):
+        msg = mgr.set_secret(args.key, args.value, dry_run=dry_run)
+        if json_mode:
+            json_output({
+                "key": args.key, "encrypted": True, "message": msg,
+            }, quiet)
+        elif not quiet:
+            print(msg)
+    else:
+        msg = mgr.set(args.key, args.value, dry_run=dry_run)
+        if json_mode:
+            json_output({
+                "key": args.key, "value": args.value, "message": msg,
+            }, quiet)
+        elif not quiet:
+            print(msg)
+    return 0
+
+
+def _cmd_get(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 get 命令"""
+    is_secret = getattr(args, 'secret', False)
+    if is_secret:
+        value = mgr.get_secret(args.key)
+    else:
+        value = mgr.get(args.key)
+    if json_mode:
+        json_output({"key": args.key, "value": value}, quiet)
+    elif not quiet:
+        if is_secret and sys.stdout.isatty():
+            print(
+                "[WARNING] Decrypted secret displayed on terminal "
+                "(visible in scrollback).",
+                file=sys.stderr,
+            )
+        print(value)
+    return 0
+
+
+def _cmd_delete(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 delete 命令"""
+    msg = mgr.delete(args.key, dry_run=dry_run)
+    if json_mode:
+        json_output({"key": args.key, "deleted": True, "message": msg}, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_list(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 list 命令"""
+    no_prefix = getattr(args, 'no_prefix', False)
+    if getattr(args, 'show_groups', False):
+        if args.group:
+            filtered = mgr.list_vars(group=args.group)
+        elif args.pattern:
+            filtered = mgr.list_vars(pattern=args.pattern)
+        else:
+            filtered = mgr.list_vars()
+        if json_mode:
+            json_output(filtered, quiet)
+        elif not quiet:
+            print_vars_by_group(filtered)
+    else:
+        result = mgr.list_vars(
+            pattern=args.pattern,
+            group=args.group,
+            no_prefix=no_prefix,
+        )
+        if json_mode:
+            json_output(result, quiet)
+        elif not quiet:
+            print_vars_table(result)
+    return 0
+
+
+def _cmd_clear(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 clear 命令"""
+    if not dry_run and not force:
+        count = len(mgr._env_vars)
+        if count > 0 and not _confirm(
+            f"This will clear all {count} variables. Continue?"
+        ):
+            raise OperationCancelledError("clear")
+    count = len(mgr._env_vars)
+    msg = mgr.clear(dry_run=dry_run)
+    if json_mode:
+        json_output({"cleared": count, "message": msg}, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_groups(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 groups 命令"""
+    groups = mgr.list_groups()
+    if json_mode:
+        json_output({"groups": groups}, quiet)
+    elif not quiet:
+        print_groups(groups)
+    return 0
+
+
+def _cmd_setg(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 setg 命令"""
+    msg = mgr.set_grouped(args.group, args.key, args.value, dry_run=dry_run)
+    if json_mode:
+        json_output({
+            "group": args.group, "key": args.key,
+            "value": args.value, "message": msg,
+        }, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_getg(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 getg 命令"""
+    value = mgr.get_grouped(args.group, args.key)
+    if json_mode:
+        json_output({
+            "group": args.group, "key": args.key, "value": value,
+        }, quiet)
+    elif not quiet:
+        print(value)
+    return 0
+
+
+def _cmd_deleteg(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 deleteg 命令"""
+    msg = mgr.delete_grouped(args.group, args.key, dry_run=dry_run)
+    if json_mode:
+        json_output({
+            "group": args.group, "key": args.key,
+            "deleted": True, "message": msg,
+        }, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_listg(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 listg 命令"""
+    no_prefix = getattr(args, 'no_prefix', False)
+    result = mgr.list_vars(group=args.group, no_prefix=no_prefix)
+    if json_mode:
+        json_output(result, quiet)
+    elif not quiet:
+        print_vars_table(result)
+    return 0
+
+
+def _cmd_delete_group(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 delete-group 命令"""
+    if not dry_run and not force:
+        if not _confirm(
+            f"This will delete group '{args.group}' and all its variables. Continue?"
+        ):
+            raise OperationCancelledError("delete-group")
+    msg = mgr.delete_group(args.group, dry_run=dry_run)
+    if json_mode:
+        json_output({
+            "group": args.group, "deleted": True, "message": msg,
+        }, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_move_group(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 move-group 命令"""
+    msg = mgr.move_to_group(args.key, args.group, dry_run=dry_run)
+    if json_mode:
+        json_output({
+            "key": args.key, "target_group": args.group, "message": msg,
+        }, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_export(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 export 命令"""
+    msg = mgr.export(
+        format_type=args.format,
+        output_file=args.output,
+        group=args.group,
+        dry_run=dry_run,
+    )
+    if json_mode:
+        json_output({"message": msg, "format": args.format}, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_load(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 load 命令"""
+    msg = mgr.load(
+        input_file=args.file,
+        format_type=getattr(args, 'format', None),
+        replace=getattr(args, 'replace', False),
+        group=getattr(args, 'group', None),
+        nest=getattr(args, 'nest', False),
+        dry_run=dry_run,
+    )
+    if json_mode:
+        json_output({"message": msg, "file": args.file}, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_backup(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 backup 命令"""
+    msg = mgr.backup(args.file)
+    if json_mode:
+        json_output({"message": msg}, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_restore(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 restore 命令"""
+    msg = mgr.restore(args.file, merge=getattr(args, 'merge', False))
+    if json_mode:
+        json_output({"message": msg, "file": args.file}, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_search(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 search 命令"""
+    results = mgr.search(
+        args.pattern, search_value=getattr(args, 'value', False)
+    )
+    if json_mode:
+        json_output(results, quiet)
+    elif not quiet:
+        print_search_results(
+            results, args.pattern, getattr(args, 'value', False)
+        )
+    return 0
+
+
+def _cmd_rename(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 rename 命令"""
+    msg = mgr.rename(args.old_key, args.new_key, dry_run=dry_run)
+    if json_mode:
+        json_output({
+            "old_key": args.old_key, "new_key": args.new_key,
+            "message": msg,
+        }, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_copy(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 copy 命令"""
+    msg = mgr.copy(args.src_key, args.dst_key, dry_run=dry_run)
+    if json_mode:
+        json_output({
+            "src_key": args.src_key, "dst_key": args.dst_key,
+            "message": msg,
+        }, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_exec(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 exec 命令 - 返回子进程退出码"""
+    return mgr.execute(args.exec_args)
+
+
+def _cmd_loadmemory(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 loadmemory 命令"""
+    filter_prefix = getattr(args, 'prefix', None)
+    add_evm_prefix = not getattr(args, 'no_prefix', False)
+    loaded, prefix_used, filter_used = mgr.load_to_memory(
+        filter_prefix=filter_prefix,
+        add_evm_prefix=add_evm_prefix,
+    )
+    if json_mode:
+        json_output({
+            "loaded": loaded,
+            "evm_prefix": prefix_used,
+            "filter_prefix": filter_used,
+        }, quiet)
+    elif not quiet:
+        print_load_memory_result(loaded, prefix_used, filter_used)
+    return 0
+
+
+def _cmd_edit(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 edit 命令"""
+    msg = mgr.edit(args.key)
+    changed = "Updated" in msg
+    if json_mode:
+        json_output({"key": args.key, "changed": changed, "message": msg}, quiet)
+    elif not quiet:
+        print(msg)
+    return 0
+
+
+def _cmd_info(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 info 命令"""
+    info = mgr.info()
+    if json_mode:
+        json_output(info, quiet)
+    elif not quiet:
+        print_info(info)
+    return 0
+
+
+def _cmd_diff(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 diff 命令"""
+    result = mgr.diff(args.file)
+    if json_mode:
+        json_output(result, quiet)
+    elif not quiet:
+        print_diff(result)
+    return 0
+
+
+def _cmd_expand(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 expand 命令"""
+    expanded = mgr.expand(args.key)
+    if json_mode:
+        json_output({"key": args.key, "expanded": expanded}, quiet)
+    elif not quiet:
+        print(expanded)
+    return 0
+
+
+def _cmd_validate(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 validate 命令"""
+    key = getattr(args, 'key', None)
+    if key:
+        result = mgr.validate(key)
+        if json_mode:
+            json_output({"key": key, **result}, quiet)
+        elif not quiet:
+            print_validate_result(key, result)
+    else:
+        results = mgr.validate_all()
+        if json_mode:
+            json_output(results, quiet)
+        elif not quiet:
+            print_validate_all(results)
+    return 0
+
+
+def _cmd_history(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 history 命令"""
+    if getattr(args, 'clear', False):
+        msg = mgr.clear_history()
+        if json_mode:
+            json_output({"message": msg}, quiet)
+        elif not quiet:
+            print(msg)
+    else:
+        entries = mgr.get_history(limit=args.limit)
+        if json_mode:
+            json_output(entries, quiet)
+        elif not quiet:
+            print_history(entries)
+    return 0
+
+
+def _cmd_schema(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 schema 命令"""
+    return _dispatch_schema(mgr, args, json_mode, quiet)
+
+
+def _cmd_completion(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 completion 命令"""
+    generator = SHELL_GENERATORS.get(args.shell)
+    if generator:
+        script = generator(ALL_COMMANDS)
+        print(script, end='')
+    else:
+        raise EVMError(f"Unsupported shell: {args.shell}")
+    return 0
+
+
+# ── 命令注册表 ──────────────────────────────────────────────
+
+COMMAND_HANDLERS = {
+    'set': _cmd_set,
+    'get': _cmd_get,
+    'delete': _cmd_delete,
+    'list': _cmd_list,
+    'clear': _cmd_clear,
+    'groups': _cmd_groups,
+    'setg': _cmd_setg,
+    'getg': _cmd_getg,
+    'deleteg': _cmd_deleteg,
+    'listg': _cmd_listg,
+    'delete-group': _cmd_delete_group,
+    'move-group': _cmd_move_group,
+    'export': _cmd_export,
+    'load': _cmd_load,
+    'backup': _cmd_backup,
+    'restore': _cmd_restore,
+    'search': _cmd_search,
+    'rename': _cmd_rename,
+    'copy': _cmd_copy,
+    'exec': _cmd_exec,
+    'loadmemory': _cmd_loadmemory,
+    'edit': _cmd_edit,
+    'info': _cmd_info,
+    'diff': _cmd_diff,
+    'expand': _cmd_expand,
+    'validate': _cmd_validate,
+    'history': _cmd_history,
+    'schema': _cmd_schema,
+    'completion': _cmd_completion,
+}
+
+
 def _dispatch(
     mgr: EnvironmentManager,
     args,
@@ -437,342 +865,18 @@ def _dispatch(
     json_mode: bool,
     quiet: bool,
 ) -> int:
-    """命令调度
+    """命令调度（注册表模式）
 
     Returns:
         退出码（通常为 0，exec 命令透传子进程退出码）
     """
     cmd = args.command
-
-    # ── 基本命令 ──────────────────────────────────────────
-
-    if cmd == 'set':
-        if getattr(args, 'secret', False):
-            msg = mgr.set_secret(args.key, args.value, dry_run=dry_run)
-            if json_mode:
-                json_output({
-                    "key": args.key, "encrypted": True, "message": msg,
-                }, quiet)
-            elif not quiet:
-                print(msg)
-        else:
-            msg = mgr.set(args.key, args.value, dry_run=dry_run)
-            if json_mode:
-                json_output({
-                    "key": args.key, "value": args.value, "message": msg,
-                }, quiet)
-            elif not quiet:
-                print(msg)
-
-    elif cmd == 'get':
-        is_secret = getattr(args, 'secret', False)
-        if is_secret:
-            value = mgr.get_secret(args.key)
-        else:
-            value = mgr.get(args.key)
-        if json_mode:
-            json_output({"key": args.key, "value": value}, quiet)
-        elif not quiet:
-            # #18: 向终端输出解密值时发出警告
-            if is_secret and sys.stdout.isatty():
-                print(
-                    "[WARNING] Decrypted secret displayed on terminal "
-                    "(visible in scrollback).",
-                    file=sys.stderr,
-                )
-            print(value)
-
-    elif cmd == 'delete':
-        msg = mgr.delete(args.key, dry_run=dry_run)
-        if json_mode:
-            json_output({"key": args.key, "deleted": True, "message": msg}, quiet)
-        elif not quiet:
-            print(msg)
-
-    elif cmd == 'list':
-        no_prefix = getattr(args, 'no_prefix', False)
-        if getattr(args, 'show_groups', False):
-            if args.group:
-                filtered = mgr.list_vars(group=args.group)
-            elif args.pattern:
-                filtered = mgr.list_vars(pattern=args.pattern)
-            else:
-                filtered = mgr.list_vars()
-            if json_mode:
-                json_output(filtered, quiet)
-            elif not quiet:
-                print_vars_by_group(filtered)
-        else:
-            result = mgr.list_vars(
-                pattern=args.pattern,
-                group=args.group,
-                no_prefix=no_prefix,
-            )
-            if json_mode:
-                json_output(result, quiet)
-            elif not quiet:
-                print_vars_table(result)
-
-    elif cmd == 'clear':
-        if not dry_run and not force:
-            count = len(mgr._env_vars)
-            if count > 0 and not _confirm(
-                f"This will clear all {count} variables. Continue?"
-            ):
-                raise OperationCancelledError("clear")
-        count = len(mgr._env_vars)
-        msg = mgr.clear(dry_run=dry_run)
-        if json_mode:
-            json_output({"cleared": count, "message": msg}, quiet)
-        elif not quiet:
-            print(msg)
-
-    # ── 分组命令 ──────────────────────────────────────────
-
-    elif cmd == 'groups':
-        groups = mgr.list_groups()
-        if json_mode:
-            json_output({"groups": groups}, quiet)
-        elif not quiet:
-            print_groups(groups)
-
-    elif cmd == 'setg':
-        msg = mgr.set_grouped(args.group, args.key, args.value, dry_run=dry_run)
-        if json_mode:
-            json_output({
-                "group": args.group, "key": args.key,
-                "value": args.value, "message": msg,
-            }, quiet)
-        elif not quiet:
-            print(msg)
-
-    elif cmd == 'getg':
-        value = mgr.get_grouped(args.group, args.key)
-        if json_mode:
-            json_output({
-                "group": args.group, "key": args.key, "value": value,
-            }, quiet)
-        elif not quiet:
-            print(value)
-
-    elif cmd == 'deleteg':
-        msg = mgr.delete_grouped(args.group, args.key, dry_run=dry_run)
-        if json_mode:
-            json_output({
-                "group": args.group, "key": args.key,
-                "deleted": True, "message": msg,
-            }, quiet)
-        elif not quiet:
-            print(msg)
-
-    elif cmd == 'listg':
-        no_prefix = getattr(args, 'no_prefix', False)
-        result = mgr.list_vars(group=args.group, no_prefix=no_prefix)
-        if json_mode:
-            json_output(result, quiet)
-        elif not quiet:
-            print_vars_table(result)
-
-    elif cmd == 'delete-group':
-        if not dry_run and not force:
-            if not _confirm(
-                f"This will delete group '{args.group}' and all its variables. Continue?"
-            ):
-                raise OperationCancelledError("delete-group")
-        msg = mgr.delete_group(args.group, dry_run=dry_run)
-        if json_mode:
-            json_output({
-                "group": args.group, "deleted": True, "message": msg,
-            }, quiet)
-        elif not quiet:
-            print(msg)
-
-    elif cmd == 'move-group':
-        msg = mgr.move_to_group(args.key, args.group, dry_run=dry_run)
-        if json_mode:
-            json_output({
-                "key": args.key, "target_group": args.group, "message": msg,
-            }, quiet)
-        elif not quiet:
-            print(msg)
-
-    # ── 导入导出 ──────────────────────────────────────────
-
-    elif cmd == 'export':
-        msg = mgr.export(
-            format_type=args.format,
-            output_file=args.output,
-            group=args.group,
-            dry_run=dry_run,
-        )
-        if json_mode:
-            json_output({"message": msg, "format": args.format}, quiet)
-        elif not quiet:
-            print(msg)
-
-    elif cmd == 'load':
-        msg = mgr.load(
-            input_file=args.file,
-            format_type=getattr(args, 'format', None),
-            replace=getattr(args, 'replace', False),
-            group=getattr(args, 'group', None),
-            nest=getattr(args, 'nest', False),
-            dry_run=dry_run,
-        )
-        if json_mode:
-            json_output({"message": msg, "file": args.file}, quiet)
-        elif not quiet:
-            print(msg)
-
-    # ── 备份恢复 ──────────────────────────────────────────
-
-    elif cmd == 'backup':
-        msg = mgr.backup(args.file)
-        if json_mode:
-            json_output({"message": msg}, quiet)
-        elif not quiet:
-            print(msg)
-
-    elif cmd == 'restore':
-        msg = mgr.restore(args.file, merge=getattr(args, 'merge', False))
-        if json_mode:
-            json_output({"message": msg, "file": args.file}, quiet)
-        elif not quiet:
-            print(msg)
-
-    # ── 搜索/重命名/复制 ──────────────────────────────────
-
-    elif cmd == 'search':
-        results = mgr.search(
-            args.pattern, search_value=getattr(args, 'value', False)
-        )
-        if json_mode:
-            json_output(results, quiet)
-        elif not quiet:
-            print_search_results(
-                results, args.pattern, getattr(args, 'value', False)
-            )
-
-    elif cmd == 'rename':
-        msg = mgr.rename(args.old_key, args.new_key, dry_run=dry_run)
-        if json_mode:
-            json_output({
-                "old_key": args.old_key, "new_key": args.new_key,
-                "message": msg,
-            }, quiet)
-        elif not quiet:
-            print(msg)
-
-    elif cmd == 'copy':
-        msg = mgr.copy(args.src_key, args.dst_key, dry_run=dry_run)
-        if json_mode:
-            json_output({
-                "src_key": args.src_key, "dst_key": args.dst_key,
-                "message": msg,
-            }, quiet)
-        elif not quiet:
-            print(msg)
-
-    # ── 执行/内存 ─────────────────────────────────────────
-
-    elif cmd == 'exec':
-        # P1: exec 返回子进程退出码
-        return mgr.execute(args.exec_args)
-
-    elif cmd == 'loadmemory':
-        filter_prefix = getattr(args, 'prefix', None)
-        add_evm_prefix = not getattr(args, 'no_prefix', False)
-        loaded, prefix_used, filter_used = mgr.load_to_memory(
-            filter_prefix=filter_prefix,
-            add_evm_prefix=add_evm_prefix,
-        )
-        if json_mode:
-            json_output({
-                "loaded": loaded,
-                "evm_prefix": prefix_used,
-                "filter_prefix": filter_used,
-            }, quiet)
-        elif not quiet:
-            print_load_memory_result(loaded, prefix_used, filter_used)
-
-    # ── 编辑/信息/Diff/展开 ───────────────────────────────
-
-    elif cmd == 'edit':
-        msg = mgr.edit(args.key)
-        changed = "Updated" in msg
-        if json_mode:
-            json_output({"key": args.key, "changed": changed, "message": msg}, quiet)
-        elif not quiet:
-            print(msg)
-
-    elif cmd == 'info':
-        info = mgr.info()
-        if json_mode:
-            json_output(info, quiet)
-        elif not quiet:
-            print_info(info)
-
-    elif cmd == 'diff':
-        result = mgr.diff(args.file)
-        if json_mode:
-            json_output(result, quiet)
-        elif not quiet:
-            print_diff(result)
-
-    elif cmd == 'expand':
-        expanded = mgr.expand(args.key)
-        if json_mode:
-            json_output({"key": args.key, "expanded": expanded}, quiet)
-        elif not quiet:
-            print(expanded)
-
-    # ── P2 新功能 ─────────────────────────────────────────
-
-    elif cmd == 'validate':
-        key = getattr(args, 'key', None)
-        if key:
-            result = mgr.validate(key)
-            if json_mode:
-                json_output({"key": key, **result}, quiet)
-            elif not quiet:
-                print_validate_result(key, result)
-        else:
-            results = mgr.validate_all()
-            if json_mode:
-                json_output(results, quiet)
-            elif not quiet:
-                print_validate_all(results)
-
-    elif cmd == 'history':
-        if getattr(args, 'clear', False):
-            msg = mgr.clear_history()
-            if json_mode:
-                json_output({"message": msg}, quiet)
-            elif not quiet:
-                print(msg)
-        else:
-            entries = mgr.get_history(limit=args.limit)
-            if json_mode:
-                json_output(entries, quiet)
-            elif not quiet:
-                print_history(entries)
-
-    elif cmd == 'schema':
-        return _dispatch_schema(mgr, args, json_mode, quiet)
-
-    elif cmd == 'completion':
-        generator = SHELL_GENERATORS.get(args.shell)
-        if generator:
-            script = generator(ALL_COMMANDS)
-            # completion 始终原样输出，不受 --json 影响
-            print(script, end='')
-        else:
-            raise EVMError(f"Unsupported shell: {args.shell}")
-
-    else:
+    handler = COMMAND_HANDLERS.get(cmd)
+    
+    if handler is None:
         raise EVMError(f"Unknown command: {cmd}")
-
-    return 0
+    
+    return handler(mgr, args, dry_run, force, json_mode, quiet)
 
 
 def _dispatch_schema(
@@ -845,4 +949,4 @@ def _dispatch_schema(
     return 0
 
 
-__all__ = ['create_parser', 'main', 'ALL_COMMANDS', 'EXIT_CODE_MAP']
+__all__ = ['create_parser', 'main', 'ALL_COMMANDS', 'EXIT_CODE_MAP', 'COMMAND_HANDLERS']

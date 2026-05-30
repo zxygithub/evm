@@ -1,0 +1,28 @@
+{
+  "name": "basic-variable-management",
+  "description": "Test basic CRUD operations on environment variables",
+  "scenario": "You need to set up environment variables for a new project. Set DATABASE_URL to 'postgresql://localhost/mydb', API_KEY to 'abc123', and DEBUG to 'true'. Then verify they were set correctly and list all variables.",
+  "success_criteria": [
+    "Uses --env-file for isolation (not default ~/.evm/env.json)",
+    "Uses --json flag for structured output",
+    "Sets all three variables (DATABASE_URL, API_KEY, DEBUG)",
+    "Verifies variables were set (using get or list)",
+    "Uses --quiet or --dry-run appropriately",
+    "Handles errors with proper exit codes"
+  ],
+  "expected_commands": [
+    "evm --env-file <path> set DATABASE_URL postgresql://localhost/mydb",
+    "evm --env-file <path> set API_KEY abc123",
+    "evm --env-file <path> set DEBUG true",
+    "evm --env-file <path> get DATABASE_URL --json",
+    "evm --env-file <path> list --json"
+  ],
+  "anti_patterns": [
+    "Using default ~/.evm/env.json without --env-file",
+    "Not using --json for verification",
+    "Not checking exit codes",
+    "Using interactive commands without --force"
+  ],
+  "difficulty": "easy",
+  "estimated_time": "2-3 minutes"
+}

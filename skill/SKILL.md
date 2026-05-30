@@ -1,6 +1,7 @@
 ---
 name: evm-agent
-description: Environment Variable Manager (EVM) CLI skill for AI agents. Use this skill whenever you need to manage environment variables, handle .env files, store/retrieve secrets, set up multi-environment configurations, validate configuration values, or run commands with specific environment contexts. This includes scenarios like setting up dev/staging/prod configs, importing .env files, exporting shell scripts, managing encrypted credentials, or any task involving environment configuration management. Even if the user doesn't explicitly mention "EVM", trigger this skill for environment variable workflows.
+version: 2.1.0
+description: Environment Variable Manager (EVM) CLI skill for AI agents. Use this skill whenever you need to manage environment variables, handle .env files, store/retrieve secrets, set up multi-environment configurations (dev/staging/prod), validate configuration values against schemas, run commands with specific environment contexts, or perform any task involving environment variable management. This includes scenarios like setting up environment configs, importing/exporting .env files, managing encrypted credentials, running applications with injected environment variables, backing up configurations, or automating environment variable workflows. Trigger this skill even if the user doesn't explicitly mention "EVM" — any environment variable, .env, or configuration management task should activate it.
 ---
 
 # EVM Agent Skill
@@ -13,12 +14,17 @@ EVM (Environment Variable Manager) is a CLI tool for managing environment variab
 # Check if installed
 evm --version
 
-# Install from source
+# Install from source (recommended for development)
 pip install -e .
+
+# Install with development dependencies (includes pytest, ruff, mypy)
+pip install -e ".[dev]"
 
 # Install from PyPI (if available)
 pip install evm-cli
 ```
+
+**Note**: EVM uses `pyproject.toml` for modern Python packaging (PEP 621). The `setup.py` is kept as a backward-compatibility shim.
 
 ## Core Principles for Agent Usage
 
@@ -26,7 +32,13 @@ pip install evm-cli
 
 EVM supports `--json` on all commands. This gives you predictable, parseable output on stdout. Errors go to stderr as JSON.
 
+**Important**: The `--json` flag can be placed **before or after** the subcommand (fixed in v2.0.1):
+
 ```bash
+# Both forms work:
+evm --json get API_KEY
+evm get API_KEY --json
+
 # stdout: {"status": "ok", "data": {"key": "API_KEY", "value": "abc123"}}
 evm get API_KEY --json
 
@@ -277,10 +289,10 @@ mgr.expand("URL")  # "http://localhost:3000"
 evm_call() {
     local output
     local exit_code
-    
+
     output=$(evm --env-file "$EVM_FILE" --json "$@" 2>/dev/null)
     exit_code=$?
-    
+
     case $exit_code in
         0) echo "$output" ;;
         2) echo "Error: Variable not found" >&2 ;;
@@ -290,7 +302,7 @@ evm_call() {
         6) echo "Error: Validation failed" >&2 ;;
         *) echo "Error: Unknown (code $exit_code)" >&2 ;;
     esac
-    
+
     return $exit_code
 }
 ```
@@ -313,6 +325,25 @@ except SchemaError as e:
     print(f"Schema violation: {e}")
 ```
 
+## Architecture Notes for Agents
+
+**Command Registry Pattern**: EVM uses a command registry pattern (introduced in v2.1.0) where each CLI command is a standalone handler function registered in `COMMAND_HANDLERS`. This makes it easy to:
+- Add new commands by creating handler functions
+- Test commands in isolation
+- Extend EVM with plugins
+
+**Module Organization**:
+- `cli.py`: CLI parsing and command dispatch
+- `manager.py`: Core business logic (CRUD, templates, execution)
+- `_io.py`: Import/export/backup/restore (IOMixin)
+- `_groups.py`: Namespace/group management (GroupMixin)
+- `_history.py`: Operation logging (HistoryMixin)
+- `_schema.py`: Validation schemas (SchemaMixin)
+- `_crypto.py`: HKDF + HMAC-CTR encryption
+- `exceptions.py`: Exception hierarchy
+
+When debugging issues, check the relevant module based on the operation type.
+
 ## Security Considerations
 
 1. **File permissions**: EVM automatically sets `chmod 600` on storage files, backups, schema files, and history files
@@ -328,3 +359,60 @@ For complete command reference, read `references/command-reference.md`.
 For detailed exit code mapping, read `references/exit-codes.md`.
 For Python API patterns, read `references/python-api.md`.
 For security architecture, read `references/security.md`.
+
+## Agent Quick Reference
+
+Common patterns you can copy-paste:
+
+### Check if variable exists
+```bash
+if evm --env-file config.json --quiet get KEY 2>/dev/null; then
+    echo "exists"
+else
+    echo "not found (exit code 2)"
+fi
+```
+
+### Get variable value safely
+```bash
+VALUE=$(evm --env-file config.json get KEY --json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['value'])")
+```
+
+### Set variable with dry-run preview
+```bash
+evm --env-file config.json set KEY value --dry-run --json
+# Review output, then execute without --dry-run
+evm --env-file config.json set KEY value --json
+```
+
+### Multi-environment setup
+```bash
+for env in dev staging prod; do
+    evm --env-file ${env}.json set DATABASE_URL "${env}.example.com:5432/db"
+    evm --env-file ${env}.json set LOG_LEVEL "debug"
+done
+```
+
+### Validate all variables
+```bash
+RESULT=$(evm --env-file config.json validate --json)
+INVALID=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin)['data']; print([k for k,v in d.items() if not v['valid']])")
+if [ "$INVALID" != "[]" ]; then
+    echo "Validation failed for: $INVALID"
+    exit 1
+fi
+```
+
+### Run command with environment
+```bash
+evm --env-file config.json exec -- python app.py
+# Exit code from app.py is passed through
+```
+
+### Backup before changes
+```bash
+evm --env-file config.json backup --file backup_$(date +%Y%m%d_%H%M%S).json
+# Make changes...
+# Restore if needed:
+# evm --env-file config.json restore backup_file.json
+```

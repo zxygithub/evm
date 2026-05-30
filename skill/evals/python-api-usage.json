@@ -1,0 +1,36 @@
+{
+  "name": "python-api-usage",
+  "description": "Test Python API usage patterns",
+  "scenario": "Write a Python script that uses the EVM Python API to manage environment variables programmatically. Demonstrate CRUD operations, error handling with specific exceptions, schema validation, and group management.",
+  "success_criteria": [
+    "Imports from evm.manager and evm.exceptions correctly",
+    "Uses EnvironmentManager with custom env_file",
+    "Performs CRUD operations (set, get, delete)",
+    "Handles KeyNotFoundError appropriately",
+    "Uses set_grouped and get_grouped for groups",
+    "Defines and validates schemas",
+    "Catches SchemaError for validation failures",
+    "Uses try-except blocks for error handling",
+    "Does not use print statements (uses logging or returns values)"
+  ],
+  "expected_code_patterns": [
+    "from evm.manager import EnvironmentManager",
+    "from evm.exceptions import KeyNotFoundError, SchemaError",
+    "mgr = EnvironmentManager('/tmp/test.json')",
+    "mgr.set('KEY', 'value')",
+    "value = mgr.get('KEY')",
+    "mgr.set_grouped('dev', 'PORT', '3000')",
+    "mgr.set_schema('URL', format='url', required=True)",
+    "result = mgr.validate('URL')",
+    "try: ... except KeyNotFoundError as e: ..."
+  ],
+  "anti_patterns": [
+    "Using subprocess to call evm CLI instead of Python API",
+    "Catching generic Exception instead of specific exceptions",
+    "Not using EnvironmentManager",
+    "Hardcoding default ~/.evm/env.json path",
+    "Not handling errors appropriately"
+  ],
+  "difficulty": "hard",
+  "estimated_time": "15-20 minutes"
+}

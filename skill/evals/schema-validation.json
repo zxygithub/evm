@@ -1,0 +1,36 @@
+{
+  "name": "schema-validation",
+  "description": "Test schema definition and validation",
+  "scenario": "Define schemas for common configuration variables: API_URL (url format, required), PORT (port format), ADMIN_EMAIL (email format), and API_KEY (custom regex pattern for 32+ alphanumeric chars). Set some valid values and validate them. Then set an invalid value and show how validation catches it.",
+  "success_criteria": [
+    "Uses schema set command with --format flag",
+    "Defines at least 3 different format types (url, port, email)",
+    "Uses custom regex pattern with --pattern flag",
+    "Marks at least one variable as --required",
+    "Sets valid values and validates successfully",
+    "Demonstrates validation failure with invalid value",
+    "Uses validate --json to get structured validation results",
+    "Handles validation errors appropriately"
+  ],
+  "expected_commands": [
+    "evm --env-file <path> schema set API_URL --format url --required",
+    "evm --env-file <path> schema set PORT --format port",
+    "evm --env-file <path> schema set ADMIN_EMAIL --format email",
+    "evm --env-file <path> schema set API_KEY --pattern '^[a-zA-Z0-9]{32,}$'",
+    "evm --env-file <path> set API_URL https://api.example.com",
+    "evm --env-file <path> set PORT 8080",
+    "evm --env-file <path> set ADMIN_EMAIL admin@example.com",
+    "evm --env-file <path> set API_KEY abcdefghijklmnopqrstuvwxyz123456",
+    "evm --env-file <path> validate --json",
+    "evm --env-file <path> set PORT invalid-port",
+    "evm --env-file <path> validate PORT --json"
+  ],
+  "anti_patterns": [
+    "Not using --format for built-in formats",
+    "Not marking critical variables as --required",
+    "Not validating after setting values",
+    "Ignoring validation errors"
+  ],
+  "difficulty": "medium",
+  "estimated_time": "7-10 minutes"
+}

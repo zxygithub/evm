@@ -1,0 +1,31 @@
+{
+  "name": "template-expansion",
+  "description": "Test template variable expansion",
+  "scenario": "Create a set of variables that reference each other using {{VAR}} syntax. Build a complete API endpoint URL from base components (API_HOST, API_PORT, API_VERSION, API_PATH). Demonstrate expansion and show how to handle circular references.",
+  "success_criteria": [
+    "Sets base variables (API_HOST, API_PORT, API_VERSION)",
+    "Creates variables with {{VAR}} template references",
+    "Uses expand command to resolve templates",
+    "Demonstrates nested expansion (variable referencing another variable with templates)",
+    "Shows error handling for circular references",
+    "Uses expand --json for structured output",
+    "Verifies expanded values are correct"
+  ],
+  "expected_commands": [
+    "evm --env-file <path> set API_HOST api.example.com",
+    "evm --env-file <path> set API_PORT 443",
+    "evm --env-file <path> set API_VERSION v1",
+    "evm --env-file <path> set API_BASE_URL https://{{API_HOST}}:{{API_PORT}}",
+    "evm --env-file <path> set API_URL {{API_BASE_URL}}/{{API_VERSION}}",
+    "evm --env-file <path> expand API_URL --json",
+    "evm --env-file <path> get API_URL"
+  ],
+  "anti_patterns": [
+    "Not using {{}} syntax for references",
+    "Not verifying expanded values",
+    "Creating circular references without testing",
+    "Not using --json for expand output"
+  ],
+  "difficulty": "medium",
+  "estimated_time": "5-7 minutes"
+}

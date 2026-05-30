@@ -1,0 +1,33 @@
+{
+  "name": "multi-environment-setup",
+  "description": "Test multi-environment configuration management",
+  "scenario": "Set up a project with dev, staging, and prod environments. Each environment needs different DATABASE_URL and API_KEY values. Use groups to organize them in a single config file. Then demonstrate how to list variables for each environment and export the prod environment to a .env file.",
+  "success_criteria": [
+    "Uses setg command with group names (dev, staging, prod)",
+    "Sets DATABASE_URL and API_KEY for each environment",
+    "Uses listg to verify each environment's variables",
+    "Exports prod group to .env format",
+    "Uses --json for all verification commands",
+    "Uses --env-file for isolation"
+  ],
+  "expected_commands": [
+    "evm --env-file <path> setg dev DATABASE_URL localhost:5432/dev",
+    "evm --env-file <path> setg staging DATABASE_URL staging.example.com:5432/staging",
+    "evm --env-file <path> setg prod DATABASE_URL prod.example.com:5432/prod",
+    "evm --env-file <path> setg dev API_KEY dev-key-123",
+    "evm --env-file <path> setg staging API_KEY staging-key-456",
+    "evm --env-file <path> setg prod API_KEY prod-key-789",
+    "evm --env-file <path> listg dev --json",
+    "evm --env-file <path> listg staging --json",
+    "evm --env-file <path> listg prod --json",
+    "evm --env-file <path> export --group prod --format env --output prod.env"
+  ],
+  "anti_patterns": [
+    "Using separate config files instead of groups",
+    "Not verifying each environment separately",
+    "Not using --json for structured output",
+    "Forgetting to export with --group flag"
+  ],
+  "difficulty": "medium",
+  "estimated_time": "5-7 minutes"
+}

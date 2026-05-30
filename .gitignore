@@ -68,6 +68,13 @@ Thumbs.db
 !package.json
 !.evm/__init__.py
 
+# Tool / Agent config
+.qwen/
+.remember/
+.ruff_cache/
+skill-workspace/
+env.env
+
 # Project specific
 evm/__pycache__/
 tests/__pycache__/

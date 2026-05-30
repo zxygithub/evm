@@ -97,7 +97,10 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
             return {}
         try:
             with open(self.env_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                content = f.read().strip()
+                if not content:
+                    return {}
+                return json.loads(content)
         except json.JSONDecodeError as e:
             raise CorruptedStorageError(
                 f"Storage file is corrupted: {e}. File: {self.env_file}"
@@ -383,7 +386,13 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
             tmp_path = tmp.name
 
         try:
-            result = subprocess.run([editor, tmp_path])
+            try:
+                result = subprocess.run([editor, tmp_path])
+            except FileNotFoundError:
+                raise EditorError(
+                    f"Editor not found: '{editor}'. "
+                    f"Set $EDITOR or $VISUAL to a valid editor path."
+                )
             if result.returncode != 0:
                 raise EditorError(
                     f"Editor exited with code {result.returncode}"

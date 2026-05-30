@@ -179,23 +179,44 @@ Exit Codes:
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
+    def _sp(name, **kwargs):
+        """Create a subparser with global args (--json/--quiet/--dry-run/--force).
+
+        Uses default=argparse.SUPPRESS so subparser defaults don't overwrite
+        values set on the parent parser (e.g. `evm --json get KEY`).
+        """
+        p = subparsers.add_parser(name, **kwargs)
+        p.add_argument('--json', dest='json_mode', action='store_true',
+                       default=argparse.SUPPRESS,
+                       help='Output structured JSON (agent-friendly)')
+        p.add_argument('--quiet', '-q', action='store_true',
+                       default=argparse.SUPPRESS,
+                       help='Suppress human-readable output')
+        p.add_argument('--dry-run', action='store_true',
+                       default=argparse.SUPPRESS,
+                       help='Preview changes without writing')
+        p.add_argument('--force', action='store_true',
+                       default=argparse.SUPPRESS,
+                       help='Skip confirmation for destructive operations')
+        return p
+
     # ── 基本命令 ──────────────────────────────────────────
 
-    set_p = subparsers.add_parser('set', help='Set a variable')
+    set_p = _sp('set', help='Set a variable')
     set_p.add_argument('key', help='Variable name')
     set_p.add_argument('value', help='Variable value')
     set_p.add_argument('--secret', '-s', action='store_true',
                        help='Encrypt the value')
 
-    get_p = subparsers.add_parser('get', help='Get a variable')
+    get_p = _sp('get', help='Get a variable')
     get_p.add_argument('key', help='Variable name')
     get_p.add_argument('--secret', '-s', action='store_true',
                        help='Decrypt the value')
 
-    del_p = subparsers.add_parser('delete', help='Delete a variable')
+    del_p = _sp('delete', help='Delete a variable')
     del_p.add_argument('key', help='Variable name')
 
-    list_p = subparsers.add_parser('list', help='List all variables')
+    list_p = _sp('list', help='List all variables')
     list_p.add_argument('pattern', nargs='?', help='Filter pattern')
     list_p.add_argument('--group', '-g', help='Filter by group')
     list_p.add_argument('--show-groups', action='store_true',
@@ -203,45 +224,45 @@ Exit Codes:
     list_p.add_argument('--no-prefix', action='store_true',
                         help='Remove group prefix from display')
 
-    subparsers.add_parser('clear', help='Clear all variables')
+    _sp('clear', help='Clear all variables')
 
     # ── 分组命令 ──────────────────────────────────────────
 
-    subparsers.add_parser('groups', help='List all groups')
+    _sp('groups', help='List all groups')
 
-    setg_p = subparsers.add_parser('setg', help='Set a grouped variable')
+    setg_p = _sp('setg', help='Set a grouped variable')
     setg_p.add_argument('group')
     setg_p.add_argument('key')
     setg_p.add_argument('value')
 
-    getg_p = subparsers.add_parser('getg', help='Get a grouped variable')
+    getg_p = _sp('getg', help='Get a grouped variable')
     getg_p.add_argument('group')
     getg_p.add_argument('key')
 
-    delg_p = subparsers.add_parser('deleteg', help='Delete a grouped variable')
+    delg_p = _sp('deleteg', help='Delete a grouped variable')
     delg_p.add_argument('group')
     delg_p.add_argument('key')
 
-    listg_p = subparsers.add_parser('listg', help='List variables in a group')
+    listg_p = _sp('listg', help='List variables in a group')
     listg_p.add_argument('group')
     listg_p.add_argument('--no-prefix', action='store_true')
 
-    dg_p = subparsers.add_parser('delete-group', help='Delete an entire group')
+    dg_p = _sp('delete-group', help='Delete an entire group')
     dg_p.add_argument('group')
 
-    mg_p = subparsers.add_parser('move-group', help='Move variable to group')
+    mg_p = _sp('move-group', help='Move variable to group')
     mg_p.add_argument('key')
     mg_p.add_argument('group')
 
     # ── 导入导出 ──────────────────────────────────────────
 
-    exp_p = subparsers.add_parser('export', help='Export variables')
+    exp_p = _sp('export', help='Export variables')
     exp_p.add_argument('--format', '-f', choices=['json', 'env', 'sh'],
                        default='json')
     exp_p.add_argument('--output', '-o', help='Output file path')
     exp_p.add_argument('--group', '-g', help='Export from group')
 
-    ld_p = subparsers.add_parser('load', help='Load from file')
+    ld_p = _sp('load', help='Load from file')
     ld_p.add_argument('file', help='Input file')
     ld_p.add_argument('--format', '-f', choices=['json', 'env', 'backup'])
     ld_p.add_argument('--replace', '-r', action='store_true')
@@ -250,64 +271,64 @@ Exit Codes:
 
     # ── 备份恢复 ──────────────────────────────────────────
 
-    bk_p = subparsers.add_parser('backup', help='Backup variables')
+    bk_p = _sp('backup', help='Backup variables')
     bk_p.add_argument('--file', '-f', help='Backup file path')
 
-    rs_p = subparsers.add_parser('restore', help='Restore from backup')
+    rs_p = _sp('restore', help='Restore from backup')
     rs_p.add_argument('file')
     rs_p.add_argument('--merge', '-m', action='store_true')
 
     # ── 搜索/重命名/复制 ──────────────────────────────────
 
-    sr_p = subparsers.add_parser('search', help='Search variables')
+    sr_p = _sp('search', help='Search variables')
     sr_p.add_argument('pattern')
     sr_p.add_argument('--value', '-v', action='store_true')
 
-    rn_p = subparsers.add_parser('rename', help='Rename a variable')
+    rn_p = _sp('rename', help='Rename a variable')
     rn_p.add_argument('old_key')
     rn_p.add_argument('new_key')
 
-    cp_p = subparsers.add_parser('copy', help='Copy a variable')
+    cp_p = _sp('copy', help='Copy a variable')
     cp_p.add_argument('src_key')
     cp_p.add_argument('dst_key')
 
     # ── 执行/内存 ─────────────────────────────────────────
 
-    ex_p = subparsers.add_parser('exec', help='Execute with env vars')
+    ex_p = _sp('exec', help='Execute with env vars')
     ex_p.add_argument('exec_args', nargs='+')
 
-    lm_p = subparsers.add_parser('loadmemory', help='Load to os.environ')
+    lm_p = _sp('loadmemory', help='Load to os.environ')
     lm_p.add_argument('--prefix', '-p')
     lm_p.add_argument('--no-prefix', action='store_true')
 
     # ── 编辑/信息/Diff/展开 ───────────────────────────────
 
-    ed_p = subparsers.add_parser('edit', help='Edit value in $EDITOR')
+    ed_p = _sp('edit', help='Edit value in $EDITOR')
     ed_p.add_argument('key')
 
-    subparsers.add_parser('info', help='Show tool information')
+    _sp('info', help='Show tool information')
 
-    df_p = subparsers.add_parser('diff', help='Compare with backup')
+    df_p = _sp('diff', help='Compare with backup')
     df_p.add_argument('file')
 
-    xp_p = subparsers.add_parser('expand', help='Expand {{VAR}} templates')
+    xp_p = _sp('expand', help='Expand {{VAR}} templates')
     xp_p.add_argument('key')
 
     # ── P2 新功能 ─────────────────────────────────────────
 
     # validate
-    vl_p = subparsers.add_parser('validate', help='Validate against schema')
+    vl_p = _sp('validate', help='Validate against schema')
     vl_p.add_argument('key', nargs='?', help='Variable (omit for all)')
 
     # history
-    hi_p = subparsers.add_parser('history', help='Show operation history')
+    hi_p = _sp('history', help='Show operation history')
     hi_p.add_argument('--limit', '-n', type=int, default=20,
                       help='Number of entries to show')
     hi_p.add_argument('--clear', action='store_true',
                       help='Clear all history')
 
     # schema
-    sc_p = subparsers.add_parser('schema', help='Manage variable schemas')
+    sc_p = _sp('schema', help='Manage variable schemas')
     sc_sub = sc_p.add_subparsers(dest='schema_command', help='Schema subcommand')
 
     sc_set = sc_sub.add_parser('set', help='Set schema for a variable')
@@ -333,7 +354,7 @@ Exit Codes:
     sc_val.add_argument('key', nargs='?', help='Variable (omit for all)')
 
     # completion
-    co_p = subparsers.add_parser('completion', help='Generate shell completion')
+    co_p = _sp('completion', help='Generate shell completion')
     co_p.add_argument('shell', choices=['bash', 'zsh', 'fish'],
                       help='Shell type')
 

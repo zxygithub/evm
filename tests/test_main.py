@@ -1558,6 +1558,146 @@ class TestExitCodes(unittest.TestCase):
         code = self._run(['load', '/nonexistent/file.json'])
         self.assertEqual(code, 4)
 
+    def test_storage_error_code_3_corrupted(self):
+        """退出码 3: 损坏的 JSON 文件"""
+        with open(self.env_file, 'w') as f:
+            f.write('{invalid json content!!!')
+        code = self._run(['list'])
+        self.assertEqual(code, 3)
+
+    def test_storage_error_code_3_lock_timeout(self):
+        """退出码 3: 锁超时"""
+        from evm.manager import EnvironmentManager
+        mgr = EnvironmentManager(self.env_file, lock_timeout=0.01)
+        mgr.set('K', 'v')
+        # 手动持锁然后尝试写入
+        import fcntl
+        lock_path = str(self.env_file) + '.lock'
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            mgr2 = EnvironmentManager(self.env_file, lock_timeout=0.1)
+            mgr2._env_vars = {'X': '1'}
+            from evm.exceptions import LockTimeoutError
+            with self.assertRaises(LockTimeoutError):
+                mgr2._save_env_vars()
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            os.close(lock_fd)
+
+    def test_editor_error_code_9(self):
+        """退出码 9: 编辑器错误"""
+        from evm.cli import main
+        self._run(['set', 'EDITKEY', 'val'])
+        # 使用不存在的编辑器
+        old_editor = os.environ.get('EDITOR')
+        os.environ['EDITOR'] = 'nonexistent_editor_xyz_12345'
+        try:
+            code = main(['--env-file', self.env_file, 'edit', 'EDITKEY'])
+            self.assertEqual(code, 9)
+        finally:
+            if old_editor is not None:
+                os.environ['EDITOR'] = old_editor
+            elif 'EDITOR' in os.environ:
+                del os.environ['EDITOR']
+
+    def test_empty_file_not_corrupted(self):
+        """空存储文件应视为空 {}，不触发 CorruptedStorageError"""
+        with open(self.env_file, 'w') as f:
+            pass  # 创建空文件
+        code = self._run(['list'])
+        self.assertEqual(code, 0)
+
+    def test_whitespace_only_file_not_corrupted(self):
+        """只有空白的存储文件应视为空 {}"""
+        with open(self.env_file, 'w') as f:
+            f.write('   \n  \n  ')
+        code = self._run(['list'])
+        self.assertEqual(code, 0)
+
+
+# ══════════════════════════════════════════════════════════════
+# 子命令后全局参数修复验证
+# ══════════════════════════════════════════════════════════════
+
+
+class TestSubparserGlobalArgs(unittest.TestCase):
+    """验证 --json/--quiet/--dry-run/--force 在子命令后也能工作"""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.env_file = os.path.join(self.temp_dir, 'sp_test.json')
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir)
+
+    def _run(self, args):
+        import io
+        from evm.cli import main
+        old_stdout = sys.stdout
+        sys.stdout = captured = io.StringIO()
+        try:
+            code = main(['--env-file', self.env_file] + args)
+        except SystemExit as e:
+            code = e.code
+        finally:
+            sys.stdout = old_stdout
+        return code, captured.getvalue()
+
+    def test_json_after_get(self):
+        """evm get KEY --json 应输出 JSON"""
+        self._run(['set', 'K', 'v'])
+        code, output = self._run(['get', 'K', '--json'])
+        self.assertEqual(code, 0)
+        data = json.loads(output.strip())
+        self.assertEqual(data['status'], 'ok')
+        self.assertEqual(data['data']['value'], 'v')
+
+    def test_json_after_list(self):
+        """evm list --json 应输出 JSON"""
+        self._run(['set', 'A', '1'])
+        code, output = self._run(['list', '--json'])
+        self.assertEqual(code, 0)
+        data = json.loads(output.strip())
+        self.assertIn('A', data['data'])
+
+    def test_json_before_and_after_equivalent(self):
+        """--json 在子命令前后应产生相同结果"""
+        self._run(['set', 'K', 'v'])
+        _, before = self._run(['--json', 'get', 'K'])
+        _, after = self._run(['get', 'K', '--json'])
+        self.assertEqual(
+            json.loads(before.strip()),
+            json.loads(after.strip()),
+        )
+
+    def test_quiet_after_set(self):
+        """evm set KEY value --quiet 应静默"""
+        code, output = self._run(['set', 'K', 'v', '--quiet'])
+        self.assertEqual(code, 0)
+        self.assertEqual(output.strip(), '')
+
+    def test_dry_run_after_set(self):
+        """evm set KEY value --dry-run 应预览不写入"""
+        code, output = self._run(['set', 'K', 'v', '--dry-run'])
+        self.assertEqual(code, 0)
+        self.assertIn('DRY-RUN', output)
+        # 确认未写入
+        code2, _ = self._run(['get', 'K'])
+        self.assertEqual(code2, 2)  # KeyNotFoundError
+
+    def test_force_after_clear(self):
+        """evm clear --force 应跳过确认"""
+        self._run(['set', 'A', '1'])
+        code, _ = self._run(['clear', '--force'])
+        self.assertEqual(code, 0)
+
+    def test_force_after_delete_group(self):
+        """evm delete-group X --force 应跳过确认"""
+        self._run(['setg', 'grp', 'K', 'v'])
+        code, _ = self._run(['delete-group', 'grp', '--force'])
+        self.assertEqual(code, 0)
+
 
 # ══════════════════════════════════════════════════════════════
 # P1: exec 使用 subprocess.run

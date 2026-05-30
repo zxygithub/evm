@@ -6,7 +6,16 @@ EVM 输出格式化
 所有 print() 调用集中在此模块。
 """
 
+import shutil
 from typing import Optional
+
+# 默认终端宽度（无法检测时的回退值）
+_DEFAULT_WIDTH = 80
+
+
+def _term_width() -> int:
+    """获取当前终端宽度，非终端环境返回默认值"""
+    return shutil.get_terminal_size((_DEFAULT_WIDTH, 24)).columns
 
 
 def print_vars_table(
@@ -20,12 +29,13 @@ def print_vars_table(
         return
 
     max_key_len = max(len(k) for k in vars_dict.keys())
+    width = max(max_key_len + 50, min(_term_width(), 120))
 
     print(f"\n{title}:")
-    print("-" * (max_key_len + 50))
+    print("-" * width)
     for key, value in sorted(vars_dict.items()):
         print(f"{key:<{max_key_len}} = {value}")
-    print("-" * (max_key_len + 50))
+    print("-" * width)
     if show_total:
         print(f"Total: {len(vars_dict)} variables")
 
@@ -45,20 +55,21 @@ def print_vars_by_group(vars_dict: dict[str, str]) -> None:
         print("No environment variables to display")
         return
 
+    width = min(_term_width(), 120)
     print("\nEnvironment Variables (by group):")
-    print("=" * 70)
+    print("=" * width)
     total_vars = 0
     for group_name in sorted(groups.keys()):
         print(f"\n[{group_name}]")
-        print("-" * 70)
+        print("-" * width)
         group_vars = groups[group_name]
         max_key_len = max(len(k) for k in group_vars.keys()) if group_vars else 0
         for key, value in sorted(group_vars.items()):
             print(f"{key:<{max_key_len}} = {value}")
-        print("-" * 70)
+        print("-" * width)
         print(f"{len(group_vars)} variables")
         total_vars += len(group_vars)
-    print("\n+" * 70)
+    print("\n+" * width)
     print(f"Total: {len(groups)} groups, {total_vars} variables")
 
 
@@ -85,11 +96,12 @@ def print_groups(groups: dict[str, int]) -> None:
         print("No groups found. All variables are in the default namespace.")
         return
 
+    width = min(_term_width(), 80)
     print("\nAvailable Groups:")
-    print("-" * 50)
+    print("-" * width)
     for group in sorted(groups):
         print(f"{group:<30} ({groups[group]} variables)")
-    print("-" * 50)
+    print("-" * width)
     print(f"Total: {len(groups)} groups")
 
 
@@ -127,23 +139,25 @@ def print_diff(diff_result: dict) -> None:
         print("No differences found.")
         return
 
+    width = min(_term_width(), 80)
+
     if added:
         print(f"Added ({len(added)}):")
-        print("-" * 50)
+        print("-" * width)
         for key, value in sorted(added.items()):
             print(f"  + {key} = {value}")
         print()
 
     if removed:
         print(f"Removed ({len(removed)}):")
-        print("-" * 50)
+        print("-" * width)
         for key, value in sorted(removed.items()):
             print(f"  - {key} = {value}")
         print()
 
     if changed:
         print(f"Changed ({len(changed)}):")
-        print("-" * 50)
+        print("-" * width)
         for key, values in sorted(changed.items()):
             print(f"  ~ {key}")
             print(f"      backup:  {values['backup']}")
@@ -179,8 +193,9 @@ def print_history(entries: list[dict]) -> None:
         print("No history entries found.")
         return
 
+    width = min(_term_width(), 80)
     print(f"\nOperation History (latest {len(entries)} entries):")
-    print("-" * 80)
+    print("-" * width)
     for entry in entries:
         ts = entry.get('timestamp', '')[:19]
         op = entry.get('operation', '')
@@ -194,7 +209,7 @@ def print_history(entries: list[dict]) -> None:
         if details:
             line += f"  ({details})"
         print(line)
-    print("-" * 80)
+    print("-" * width)
 
 
 def print_validate_result(key: str, result: dict) -> None:
@@ -218,11 +233,12 @@ def print_validate_all(results: dict[str, dict]) -> None:
     valid_count = sum(1 for r in results.values() if r['valid'])
     total = len(results)
 
+    width = min(_term_width(), 80)
     print(f"\nSchema Validation ({valid_count}/{total} valid):")
-    print("-" * 60)
+    print("-" * width)
     for key in sorted(results):
         print_validate_result(key, results[key])
-    print("-" * 60)
+    print("-" * width)
     if valid_count == total:
         print("All variables passed validation.")
     else:
@@ -235,8 +251,9 @@ def print_schema(schema: dict) -> None:
         print("No schema definitions found.")
         return
 
+    width = min(_term_width(), 80)
     print("\nSchema Definitions:")
-    print("-" * 60)
+    print("-" * width)
     for key in sorted(schema):
         entry = schema[key]
         parts = []
@@ -249,7 +266,7 @@ def print_schema(schema: dict) -> None:
         if 'description' in entry:
             parts.append(f"desc={entry['description']}")
         print(f"  {key:<30} {', '.join(parts)}")
-    print("-" * 60)
+    print("-" * width)
     print(f"Total: {len(schema)} definitions")
 
 

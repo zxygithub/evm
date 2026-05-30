@@ -633,7 +633,7 @@ class TestSecrets(TestEnvironmentManagerBase):
 
     def test_secret_first_time_warning(self):
         """首次使用加密功能应包含警告"""
-        EnvironmentManager._secret_warning_shown = False
+        self.manager._secret_warning_shown = False
         msg = self.manager.set_secret('WARN_KEY', 'value')
         self.assertIn('WARNING', msg)
         # 第二次不再有警告

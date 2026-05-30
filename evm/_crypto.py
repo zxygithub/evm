@@ -18,6 +18,9 @@ import struct
 
 from .exceptions import DecryptionError
 
+# SHA-256 输出长度（字节），用于 HKDF-Expand 计算
+HKDF_HASH_LEN = 32
+
 
 def hkdf_expand(prk: bytes, info: bytes, length: int = 32) -> bytes:
     """HKDF-Expand (RFC 5869)
@@ -25,15 +28,14 @@ def hkdf_expand(prk: bytes, info: bytes, length: int = 32) -> bytes:
     从伪随机密钥 (PRK) 派生指定长度的输出密钥材料。
 
     Args:
-        prk: 伪随机密钥（至少 hash_len 字节）
+        prk: 伪随机密钥（至少 HKDF_HASH_LEN 字节）
         info: 上下文和用途信息
         length: 输出密钥材料长度（字节）
 
     Returns:
         派生的密钥材料
     """
-    hash_len = 32  # SHA-256 输出长度
-    n = (length + hash_len - 1) // hash_len
+    n = (length + HKDF_HASH_LEN - 1) // HKDF_HASH_LEN
     okm = b''
     t = b''
     for i in range(1, n + 1):

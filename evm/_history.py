@@ -111,6 +111,7 @@ class HistoryMixin(EnvironmentManagerProtocol):
             return
 
         threshold = int(self.MAX_HISTORY_ENTRIES * 1.5)
+        tmp_path = str(history_file) + '.trim.tmp'
         try:
             with open(history_file, encoding='utf-8') as f:
                 lines = f.readlines()
@@ -122,16 +123,17 @@ class HistoryMixin(EnvironmentManagerProtocol):
             keep = lines[len(lines) // 2:]
 
             # 原子写入：先写临时文件，再 rename
-            tmp_path = str(history_file) + '.trim.tmp'
             with open(tmp_path, 'w', encoding='utf-8') as f:
                 f.writelines(keep)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp_path, str(history_file))
-            os.chmod(str(history_file), 0o600)
+            try:
+                os.chmod(str(history_file), 0o600)
+            except OSError:
+                pass  # chmod 失败不影响功能，权限问题由 log_operation 下次写入时自愈
         except OSError:
             # 清理临时文件
-            tmp_path = str(history_file) + '.trim.tmp'
             if os.path.exists(tmp_path):
                 try:
                     os.unlink(tmp_path)

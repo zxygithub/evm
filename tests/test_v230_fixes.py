@@ -460,3 +460,146 @@ class TestShellCompletionDynamic:
         assert '__fish_seen_subcommand_from get' in script
         assert '__fish_seen_subcommand_from delete' in script
         assert '__evm_keys' in script
+
+
+class TestEncryptionErrorPaths:
+    """L1: 补充加密错误路径测试，提高 manager.py 覆盖率"""
+
+    def setup_method(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.env_file = os.path.join(self.temp_dir, 'env.json')
+        self.mgr = EnvironmentManager(self.env_file)
+
+    def teardown_method(self):
+        shutil.rmtree(self.temp_dir)
+
+    # ── _decrypt_v2 错误路径 ──────────────────────────────
+
+    def test_decrypt_v2_invalid_format_wrong_parts(self):
+        """v2 格式字段数不对 → DecryptionError"""
+        from evm.exceptions import DecryptionError
+        self.mgr._env_vars['BAD_V2'] = 'ENCv2:only_one_part'
+        with pytest.raises(DecryptionError, match='Invalid v2'):
+            self.mgr.get_secret('BAD_V2')
+
+    def test_decrypt_v2_bad_base64(self):
+        """v2 畸形数据导致解密失败 → DecryptionError"""
+        from evm.exceptions import DecryptionError
+        # Python base64 对非标准字符很宽容，~~~ 解码为空字节后 HMAC 校验失败
+        self.mgr._env_vars['BAD_V2'] = 'ENCv2:~~~:~~~:~~~'
+        with pytest.raises(DecryptionError):
+            self.mgr.get_secret('BAD_V2')
+
+    def test_decrypt_v2_integrity_failure(self):
+        """v2 HMAC 完整性校验失败 → DecryptionError"""
+        import base64
+
+        from evm.exceptions import DecryptionError
+        salt = base64.b64encode(b'\x00' * 16).decode()
+        bad_mac = base64.b64encode(b'\xff' * 32).decode()
+        ciphertext = base64.b64encode(b'\x00' * 10).decode()
+        self.mgr._env_vars['BAD_V2'] = f'ENCv2:{salt}:{bad_mac}:{ciphertext}'
+        with pytest.raises(DecryptionError, match='integrity check failed'):
+            self.mgr.get_secret('BAD_V2')
+
+    def test_decrypt_v2_non_utf8(self):
+        """v2 解密后非 UTF-8 → DecryptionError"""
+        import base64
+        import hashlib
+        import hmac as hmac_mod
+        import platform as platform_mod
+
+        from evm.exceptions import DecryptionError
+
+        salt = os.urandom(16)
+        machine_id = (
+            platform_mod.node()
+            + str(os.getuid() if hasattr(os, 'getuid') else '')
+            + platform_mod.machine()
+        )
+        key = hashlib.pbkdf2_hmac(
+            'sha256', machine_id.encode(), salt, 100000, dklen=32
+        )
+        # 构造一个解密后为非法 UTF-8 的密文
+        bad_utf8 = b'\x80\x81\x82'
+        ciphertext = bytes(
+            d ^ key[i % len(key)] for i, d in enumerate(bad_utf8)
+        )
+        mac = hmac_mod.new(key, salt + ciphertext, hashlib.sha256).digest()
+        v2_value = (
+            'ENCv2:'
+            + base64.b64encode(salt).decode()
+            + ':' + base64.b64encode(mac).decode()
+            + ':' + base64.b64encode(ciphertext).decode()
+        )
+        self.mgr._env_vars['BAD_UTF8'] = v2_value
+        with pytest.raises(DecryptionError, match='not valid UTF-8'):
+            self.mgr.get_secret('BAD_UTF8')
+
+    # ── _decrypt_v1 错误路径 ──────────────────────────────
+
+    def test_decrypt_v1_bad_base64(self):
+        """v1 base64 解码失败 → DecryptionError"""
+        from evm.exceptions import DecryptionError
+        self.mgr._env_vars['BAD_V1'] = 'ENC:!!!invalid-base64!!!'
+        with pytest.raises(DecryptionError, match='Failed to decrypt'):
+            self.mgr.get_secret('BAD_V1')
+
+    # ── set_secret 边界 ───────────────────────────────────
+
+    def test_set_secret_dry_run(self):
+        """set_secret dry-run 不写入存储"""
+        msg = self.mgr.set_secret('DRY_KEY', 'val', dry_run=True)
+        assert 'DRY-RUN' in msg
+        assert not self.mgr.exists('DRY_KEY')
+
+    # ── get_secret 边界 ───────────────────────────────────
+
+    def test_get_secret_key_not_found(self):
+        """get_secret 不存在的 key → KeyNotFoundError"""
+        from evm.exceptions import KeyNotFoundError
+        with pytest.raises(KeyNotFoundError):
+            self.mgr.get_secret('NONEXISTENT')
+
+    def test_get_secret_plain_value(self):
+        """get_secret 非加密值 → DecryptionError"""
+        from evm.exceptions import DecryptionError
+        self.mgr.set('PLAIN', 'normal_value')
+        with pytest.raises(DecryptionError, match='not an encrypted'):
+            self.mgr.get_secret('PLAIN')
+
+    # ── _crypto.py HKDF_HASH_LEN 常量 ─────────────────────
+
+    def test_hkdf_hash_len_constant(self):
+        """HKDF_HASH_LEN 应为 32（SHA-256 输出长度）"""
+        from evm._crypto import HKDF_HASH_LEN
+        assert HKDF_HASH_LEN == 32
+
+    # ── _completion.py PATH 检测 ──────────────────────────
+
+    def test_bash_completion_has_path_guard(self):
+        """bash 补全脚本应包含 command -v evm 检测"""
+        from evm._completion import generate_bash_completion
+        script = generate_bash_completion(['set', 'get'])
+        assert 'command -v evm' in script
+
+    def test_zsh_completion_has_path_guard(self):
+        """zsh 补全脚本应包含命令检测"""
+        from evm._completion import generate_zsh_completion
+        script = generate_zsh_completion(['set', 'get'])
+        assert 'commands[evm]' in script
+
+    def test_fish_completion_has_path_guard(self):
+        """fish 补全脚本应包含 command -q evm 检测"""
+        from evm._completion import generate_fish_completion
+        script = generate_fish_completion(['set', 'get'])
+        assert 'command -q evm' in script
+
+    # ── formatters.py 动态宽度 ────────────────────────────
+
+    def test_term_width_returns_int(self):
+        """_term_width() 应返回正整数"""
+        from evm.formatters import _term_width
+        w = _term_width()
+        assert isinstance(w, int)
+        assert w > 0

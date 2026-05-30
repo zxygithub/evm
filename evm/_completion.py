@@ -17,6 +17,11 @@ def generate_bash_completion(commands: list) -> str:
         'rename', 'copy', 'setg', 'getg', 'deleteg', 'listg',
     ])
     return f'''# EVM bash completion
+# L3: 仅在 evm 命令可用时注册补全
+if ! command -v evm &>/dev/null; then
+    return 2>/dev/null || exit
+fi
+
 _evm_completions() {{
     local cur prev opts
     COMPREPLY=()
@@ -95,6 +100,11 @@ def generate_zsh_completion(commands: list) -> str:
     """生成 zsh 补全脚本（含动态变量名补全）"""
     return f'''#compdef evm
 
+# L3: 仅在 evm 命令可用时注册补全
+if (( ! $+commands[evm] )); then
+    return
+fi
+
 _evm() {{
     local -a commands
     commands=(
@@ -165,6 +175,13 @@ _evm "$@"
 def generate_fish_completion(commands: list) -> str:
     """生成 fish 补全脚本（含动态变量名补全）"""
     lines = ['# EVM fish completion', '']
+
+    # L3: 仅在 evm 命令可用时注册补全
+    lines.append('# Guard: only register if evm is in PATH')
+    lines.append('if not command -q evm')
+    lines.append('    exit')
+    lines.append('end')
+    lines.append('')
 
     # Disable file completion by default
     lines.append('complete -c evm -f')

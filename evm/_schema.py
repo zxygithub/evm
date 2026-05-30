@@ -12,7 +12,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 from .exceptions import SchemaError
 
@@ -52,9 +52,9 @@ class SchemaMixin:
 
     def _get_schema_file(self) -> Path:
         """获取 schema 文件路径"""
-        return self.env_file.parent / 'schema.json'
+        return self.env_file.parent / 'schema.json'  # type: ignore[attr-defined,no-any-return]
 
-    def _load_schema(self) -> Dict:
+    def _load_schema(self) -> dict:
         """加载 schema 定义
 
         #10: 损坏时打印警告到 stderr，而非静默丢弃。
@@ -64,7 +64,7 @@ class SchemaMixin:
             return {}
         try:
             with open(schema_file, encoding='utf-8') as f:
-                return json.load(f)
+                return json.load(f)  # type: ignore[no-any-return]
         except json.JSONDecodeError as e:
             print(
                 f"Warning: Schema file is corrupted ({e}). "
@@ -80,7 +80,7 @@ class SchemaMixin:
             )
             return {}
 
-    def _save_schema(self, schema: Dict) -> None:
+    def _save_schema(self, schema: dict) -> None:
         """保存 schema 定义"""
         schema_file = self._get_schema_file()
         try:
@@ -142,7 +142,7 @@ class SchemaMixin:
         self._save_schema(schema)
         return f"Schema set for '{key}': {json.dumps(entry, ensure_ascii=False)}"
 
-    def get_schema(self, key: Optional[str] = None) -> Dict:
+    def get_schema(self, key: Optional[str] = None) -> dict:
         """获取 schema 定义
 
         Args:
@@ -166,7 +166,7 @@ class SchemaMixin:
 
     def validate(
         self, key: str, value: Optional[str] = None
-    ) -> Dict:
+    ) -> dict:
         """校验变量值是否符合 schema
 
         Args:
@@ -181,7 +181,7 @@ class SchemaMixin:
             raise SchemaError(f"No schema defined for '{key}'", key)
 
         if value is None:
-            if key not in self._env_vars:
+            if key not in self._env_vars:  # type: ignore[attr-defined]
                 entry = schema[key]
                 if entry.get('required', False):
                     return {
@@ -193,19 +193,19 @@ class SchemaMixin:
                     'valid': True, 'errors': [],
                     'warnings': ['Variable not set (not required)'],
                 }
-            value = self._env_vars[key]
+            value = self._env_vars[key]  # type: ignore[attr-defined]
 
         return self._validate_value(key, str(value), schema[key])
 
-    def validate_all(self) -> Dict[str, Dict]:
+    def validate_all(self) -> dict[str, dict]:
         """校验所有有 schema 定义的变量"""
         schema = self._load_schema()
         results = {}
 
         for key, entry in schema.items():
-            if key in self._env_vars:
+            if key in self._env_vars:  # type: ignore[attr-defined]
                 results[key] = self._validate_value(
-                    key, str(self._env_vars[key]), entry
+                    key, str(self._env_vars[key]), entry  # type: ignore[attr-defined]
                 )
             elif entry.get('required', False):
                 results[key] = {
@@ -223,11 +223,11 @@ class SchemaMixin:
         return results
 
     def _validate_value(
-        self, key: str, value: str, entry: Dict
-    ) -> Dict:
+        self, key: str, value: str, entry: dict
+    ) -> dict:
         """内部：校验单个值"""
-        errors = []
-        warnings = []
+        errors: list[str] = []
+        warnings: list[str] = []
 
         # 格式校验
         fmt = entry.get('format')

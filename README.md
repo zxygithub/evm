@@ -26,7 +26,18 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 - ✅ **Quiet Mode**: `--quiet` suppresses all human-readable output
 - ✅ **Granular Exit Codes**: 11 distinct codes for programmatic error handling
 - ✅ **Secure**: Shell-safe export (key+value), chmod 600, atomic writes, shared lock file, HKDF key separation
-- ✅ **Pure Python**: No external dependencies, Python 3.6+
+- ✅ **Pure Python**: No external dependencies, Python 3.9+
+
+## Platform Support
+
+**Supported Platforms:**
+- ✅ macOS (Darwin)
+- ✅ Linux (POSIX-compliant systems)
+- ❌ Windows (not supported - uses `fcntl` for file locking)
+
+**Requirements:**
+- Python 3.9 or higher
+- POSIX-compliant operating system (for file locking with `fcntl`)
 
 ## Project Structure
 
@@ -47,7 +58,7 @@ evm/
 │   ├── formatters.py         # Terminal output formatting
 │   └── exceptions.py         # Custom exception hierarchy (17 classes)
 ├── examples/                 # Example scripts
-├── tests/                    # Test suite (225 tests)
+├── tests/                    # Test suite (360 tests)
 │   ├── test_main.py          # Unit + integration tests
 │   ├── run_tests.py          # Integration test runner
 │   └── test_case/            # Test configuration files
@@ -668,7 +679,7 @@ evm export --group dev --format env
 
 ## Requirements
 
-- **Python 3.6+**
+- **Python 3.9+**
 - **No external dependencies** (uses only standard library)
 
 ## License

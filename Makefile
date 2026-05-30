@@ -33,7 +33,7 @@ clean: ## Clean up temporary files
 	find . -type f -name "*.pyc" -delete
 
 lint: ## Run linting
-	flake8 evm tests
+	ruff check .
 	mypy evm
 
 format: ## Format code with black

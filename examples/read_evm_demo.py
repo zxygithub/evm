@@ -4,9 +4,9 @@
 演示如何使用 EVM Python API 读取和管理环境变量
 """
 
-from evm.manager import EnvironmentManager
-from evm.formatters import print_vars_table, print_search_results, print_groups
 from evm.exceptions import EVMError
+from evm.formatters import print_groups, print_search_results, print_vars_table
+from evm.manager import EnvironmentManager
 
 
 def main():
@@ -93,7 +93,7 @@ def main():
     print(manager.delete_grouped('demo_group', 'API_URL'))
     print(manager.delete_grouped('demo_group', 'API_KEY'))
     print()
-    
+
     print("=== 演示完成 ===")
     print("\n提示: 导出的配置文件保存在 output/ 目录中")
 

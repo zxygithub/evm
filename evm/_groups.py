@@ -5,7 +5,6 @@ EVM 分组操作 Mixin
 从 manager.py 中提取的分组管理功能。
 """
 
-from typing import Dict
 
 from .exceptions import (
     GroupNotFoundError,
@@ -24,8 +23,8 @@ class GroupMixin:
         full_key = f"{group}:{key}" if group else key
         if dry_run:
             return f"[DRY-RUN] Would set: [{group}]{key} = {value}"
-        self._env_vars[full_key] = value
-        self._save_env_vars()
+        self._env_vars[full_key] = value  # type: ignore[attr-defined]
+        self._save_env_vars()  # type: ignore[attr-defined]
         return f"Set: [{group}]{key} = {value}"
 
     def get_grouped(self, group: str, key: str) -> str:
@@ -35,12 +34,12 @@ class GroupMixin:
             KeyNotFoundError: 变量不存在
         """
         full_key = f"{group}:{key}" if group else key
-        value = self._env_vars.get(full_key)
+        value = self._env_vars.get(full_key)  # type: ignore[attr-defined]
         if value is None and group:
-            value = self._env_vars.get(key)
+            value = self._env_vars.get(key)  # type: ignore[attr-defined]
         if value is None:
             raise KeyNotFoundError(full_key)
-        return value
+        return value  # type: ignore[no-any-return]
 
     def delete_grouped(
         self, group: str, key: str, dry_run: bool = False
@@ -51,22 +50,22 @@ class GroupMixin:
             KeyNotFoundError: 变量不存在
         """
         full_key = f"{group}:{key}" if group else key
-        if full_key not in self._env_vars:
+        if full_key not in self._env_vars:  # type: ignore[attr-defined]
             raise KeyNotFoundError(full_key)
         if dry_run:
             return f"[DRY-RUN] Would delete: [{group}]{key}"
-        del self._env_vars[full_key]
-        self._save_env_vars()
+        del self._env_vars[full_key]  # type: ignore[attr-defined]
+        self._save_env_vars()  # type: ignore[attr-defined]
         return f"Deleted: [{group}]{key}"
 
-    def list_groups(self) -> Dict[str, int]:
+    def list_groups(self) -> dict[str, int]:
         """列出所有分组
 
         Returns:
             {group_name: variable_count} 字典
         """
-        groups: Dict[str, int] = {}
-        for key in self._env_vars:
+        groups: dict[str, int] = {}
+        for key in self._env_vars:  # type: ignore[attr-defined]
             if ':' in key:
                 group = key.split(':', 1)[0]
                 groups[group] = groups.get(group, 0) + 1
@@ -85,7 +84,7 @@ class GroupMixin:
             )
 
         prefix = f"{group}:"
-        to_delete = [k for k in self._env_vars if k.startswith(prefix)]
+        to_delete = [k for k in self._env_vars if k.startswith(prefix)]  # type: ignore[attr-defined]
 
         if not to_delete:
             raise GroupNotFoundError(group)
@@ -97,8 +96,8 @@ class GroupMixin:
             )
 
         for key in to_delete:
-            del self._env_vars[key]
-        self._save_env_vars()
+            del self._env_vars[key]  # type: ignore[attr-defined]
+        self._save_env_vars()  # type: ignore[attr-defined]
         return f"Deleted group '{group}' and all its variables ({len(to_delete)} total)"
 
     def move_to_group(
@@ -109,14 +108,14 @@ class GroupMixin:
         Raises:
             KeyNotFoundError: 变量不存在
         """
-        if key not in self._env_vars:
+        if key not in self._env_vars:  # type: ignore[attr-defined]
             raise KeyNotFoundError(key)
 
         new_key = f"{new_group}:{key}"
         if dry_run:
             return f"[DRY-RUN] Would move: {key} -> {new_key}"
 
-        value = self._env_vars.pop(key)
-        self._env_vars[new_key] = value
-        self._save_env_vars()
+        value = self._env_vars.pop(key)  # type: ignore[attr-defined]
+        self._env_vars[new_key] = value  # type: ignore[attr-defined]
+        self._save_env_vars()  # type: ignore[attr-defined]
         return f"Moved: {key} -> {new_key}"

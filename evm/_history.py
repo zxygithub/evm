@@ -9,7 +9,6 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import List
 
 
 class HistoryMixin:
@@ -19,7 +18,7 @@ class HistoryMixin:
 
     def _get_history_file(self) -> Path:
         """获取历史文件路径（与 env.json 同目录）"""
-        return self.env_file.parent / 'history.jsonl'
+        return self.env_file.parent / 'history.jsonl'  # type: ignore[attr-defined,no-any-return]
 
     def log_operation(
         self,
@@ -60,7 +59,7 @@ class HistoryMixin:
 
     def get_history(
         self, limit: int = 20, offset: int = 0
-    ) -> List[dict]:
+    ) -> list[dict]:
         """获取操作历史（最新在前）"""
         history_file = self._get_history_file()
         if not history_file.exists():

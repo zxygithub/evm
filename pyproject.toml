@@ -11,7 +11,7 @@ license = { text = "MIT" }
 authors = [
     { name = "EVM Tool", email = "evm@example.com" },
 ]
-requires-python = ">=3.6"
+requires-python = ">=3.9"
 keywords = ["environment", "variables", "cli", "devops", "configuration"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -20,12 +20,11 @@ classifiers = [
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.6",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Systems Administration",
     "Topic :: Utilities",
@@ -67,7 +66,7 @@ version = { attr = "evm.__version__" }
 
 # ─── Ruff ────────────────────────────────────────────────────
 [tool.ruff]
-target-version = "py38"
+target-version = "py39"
 line-length = 88
 exclude = [
     ".git",

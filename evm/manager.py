@@ -26,7 +26,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 from ._crypto import decrypt_v3, encrypt_v3
 from ._groups import GroupMixin
@@ -85,7 +85,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
 
     # ── 内部存储 ──────────────────────────────────────────
 
-    def _load_env_vars(self) -> Dict[str, str]:
+    def _load_env_vars(self) -> dict[str, str]:
         """从存储文件加载环境变量
 
         Raises:
@@ -99,7 +99,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
                 content = f.read().strip()
                 if not content:
                     return {}
-                return json.loads(content)
+                return json.loads(content)  # type: ignore[no-any-return]
         except json.JSONDecodeError as e:
             raise CorruptedStorageError(
                 f"Storage file is corrupted: {e}. File: {self.env_file}"
@@ -208,7 +208,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         value = self._env_vars.get(key)
         if value is None:
             raise KeyNotFoundError(key)
-        return value
+        return value  # type: ignore[no-any-return]
 
     def delete(self, key: str, dry_run: bool = False) -> str:
         """删除环境变量
@@ -235,7 +235,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         group: Optional[str] = None,
         show_groups: bool = False,
         no_prefix: bool = False,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """列出环境变量
 
         Raises:
@@ -284,7 +284,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
 
     # ── 搜索 ─────────────────────────────────────────────
 
-    def search(self, pattern: str, search_value: bool = False) -> Dict[str, str]:
+    def search(self, pattern: str, search_value: bool = False) -> dict[str, str]:
         """搜索环境变量"""
         results = {}
         for key, value in self._env_vars.items():
@@ -329,7 +329,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         self,
         filter_prefix: Optional[str] = None,
         add_evm_prefix: bool = True,
-    ) -> Tuple[int, bool, Optional[str]]:
+    ) -> tuple[int, bool, Optional[str]]:
         """加载环境变量到 os.environ"""
         loaded_count = 0
         for key, value in self._env_vars.items():
@@ -342,7 +342,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
 
     # ── 执行命令 ──────────────────────────────────────────
 
-    def execute(self, command: List[str]) -> int:
+    def execute(self, command: list[str]) -> int:
         """使用环境变量执行命令
 
         P1: 改用 subprocess.run 替代 os.execvpe，
@@ -413,7 +413,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
 
     # ── 工具信息 ──────────────────────────────────────────
 
-    def info(self) -> Dict[str, object]:
+    def info(self) -> dict[str, object]:
         """返回工具元信息"""
         groups = self.list_groups()
         total_vars = len(self._env_vars)
@@ -427,7 +427,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         )
 
         return {
-            'version': '2.1.0',
+            'version': '2.2.0',
             'author': 'EVM Tool',
             'license': 'MIT',
             'python': sys.version.split()[0],

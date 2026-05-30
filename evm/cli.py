@@ -25,7 +25,7 @@ EVM 命令行接口
 
 import argparse
 import sys
-from typing import List, Optional
+from typing import Optional
 
 from ._completion import SHELL_GENERATORS
 from ._json import json_error, json_output
@@ -163,7 +163,7 @@ Exit Codes:
         """,
     )
 
-    parser.add_argument('--version', action='version', version='%(prog)s 2.1.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 2.2.0')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Show detailed version information')
     parser.add_argument('--env-file',
@@ -373,7 +373,7 @@ def _confirm(message: str) -> bool:
         return False
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     """主入口
 
     Returns:
@@ -872,11 +872,11 @@ def _dispatch(
     """
     cmd = args.command
     handler = COMMAND_HANDLERS.get(cmd)
-    
+
     if handler is None:
         raise EVMError(f"Unknown command: {cmd}")
-    
-    return handler(mgr, args, dry_run, force, json_mode, quiet)
+
+    return handler(mgr, args, dry_run, force, json_mode, quiet)  # type: ignore[no-any-return]
 
 
 def _dispatch_schema(

@@ -8,7 +8,7 @@ EVM 导入导出 Mixin
 import json
 import shlex
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 from ._schema import VALID_KEY_PATTERN
 from .exceptions import (
@@ -92,7 +92,7 @@ class IOMixin:
                 f"JSON parse error: {e}", str(path)
             ) from e
 
-    def _load_env_file(self, path: Path) -> Dict[str, str]:
+    def _load_env_file(self, path: Path) -> dict[str, str]:
         """加载 .env 文件
 
         #8: 使用平衡引号解析
@@ -131,8 +131,8 @@ class IOMixin:
         return loaded_vars, groups_detected
 
     def _apply_group_prefix(
-        self, vars_dict: Dict[str, str], group: Optional[str]
-    ) -> Dict[str, str]:
+        self, vars_dict: dict[str, str], group: Optional[str]
+    ) -> dict[str, str]:
         """为变量添加分组前缀"""
         if not group:
             return vars_dict
@@ -290,7 +290,7 @@ class IOMixin:
                     f"from {input_file}"
                 )
 
-            self._save_env_vars()
+            self._save_env_vars()  # type: ignore[attr-defined]
 
             if group:
                 parts.append(f"Variables added to group '{group}'")
@@ -319,21 +319,21 @@ class IOMixin:
 
         if backup_file is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_file = Path.home() / '.evm' / f"backup_{timestamp}.json"
+            backup_path = Path.home() / '.evm' / f"backup_{timestamp}.json"
         else:
-            backup_file = Path(backup_file)
+            backup_path = Path(backup_file)
 
-        backup_file.parent.mkdir(parents=True, exist_ok=True)
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
         backup_data = {
             'timestamp': datetime.now().isoformat(),
-            'variables': self._env_vars,
+            'variables': self._env_vars,  # type: ignore[attr-defined]
         }
 
         try:
-            with open(backup_file, 'w', encoding='utf-8') as f:
+            with open(backup_path, 'w', encoding='utf-8') as f:
                 json.dump(backup_data, f, indent=2, ensure_ascii=False)
-            os.chmod(str(backup_file), 0o600)
-            return f"Backup created: {backup_file}"
+            os.chmod(str(backup_path), 0o600)
+            return f"Backup created: {backup_path}"
         except OSError as e:
             raise BackupError(f"Error creating backup: {e}") from e
 
@@ -352,13 +352,13 @@ class IOMixin:
 
             restored_vars = backup_data['variables']
             if merge:
-                self._env_vars.update(restored_vars)
+                self._env_vars.update(restored_vars)  # type: ignore[attr-defined]
                 msg = f"Merged {len(restored_vars)} variables from backup"
             else:
-                self._env_vars = restored_vars
+                self._env_vars = restored_vars  # type: ignore[attr-defined]
                 msg = f"Restored {len(restored_vars)} variables from backup"
 
-            self._save_env_vars()
+            self._save_env_vars()  # type: ignore[attr-defined]
 
             timestamp = backup_data.get('timestamp', '')
             if timestamp:
@@ -371,7 +371,7 @@ class IOMixin:
 
     # ── Diff 比较 ─────────────────────────────────────────
 
-    def diff(self, backup_file: str) -> Dict[str, Dict]:
+    def diff(self, backup_file: str) -> dict[str, dict]:
         """比较当前状态与备份文件的差异"""
         backup_path = Path(backup_file)
         if not backup_path.exists():

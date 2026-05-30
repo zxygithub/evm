@@ -6,11 +6,11 @@ EVM 输出格式化
 所有 print() 调用集中在此模块。
 """
 
-from typing import Dict, List, Optional
+from typing import Optional
 
 
 def print_vars_table(
-    vars_dict: Dict[str, str],
+    vars_dict: dict[str, str],
     title: str = "Environment Variables",
     show_total: bool = True,
 ) -> None:
@@ -30,9 +30,9 @@ def print_vars_table(
         print(f"Total: {len(vars_dict)} variables")
 
 
-def print_vars_by_group(vars_dict: Dict[str, str]) -> None:
+def print_vars_by_group(vars_dict: dict[str, str]) -> None:
     """按分组打印变量"""
-    groups: Dict[str, Dict[str, str]] = {}
+    groups: dict[str, dict[str, str]] = {}
     for key, value in vars_dict.items():
         if ':' in key:
             group, var_name = key.split(':', 1)
@@ -63,7 +63,7 @@ def print_vars_by_group(vars_dict: Dict[str, str]) -> None:
 
 
 def print_search_results(
-    results: Dict[str, str],
+    results: dict[str, str],
     pattern: str,
     search_value: bool = False,
 ) -> None:
@@ -79,7 +79,7 @@ def print_search_results(
     )
 
 
-def print_groups(groups: Dict[str, int]) -> None:
+def print_groups(groups: dict[str, int]) -> None:
     """打印分组列表"""
     if not groups:
         print("No groups found. All variables are in the default namespace.")
@@ -93,7 +93,7 @@ def print_groups(groups: Dict[str, int]) -> None:
     print(f"Total: {len(groups)} groups")
 
 
-def print_info(info: Dict) -> None:
+def print_info(info: dict) -> None:
     """打印工具信息"""
     print("EVM (Environment Variable Manager)")
     print(f"Version: {info['version']}")
@@ -113,7 +113,7 @@ def print_info(info: Dict) -> None:
     print(f"\nRepository: {info['repository']}")
 
 
-def print_diff(diff_result: Dict) -> None:
+def print_diff(diff_result: dict) -> None:
     """打印 diff 结果"""
     added = diff_result.get('added', {})
     removed = diff_result.get('removed', {})
@@ -173,7 +173,7 @@ def print_load_memory_result(
             print(f"No variables found with prefix '{filter_prefix}'")
 
 
-def print_history(entries: List[dict]) -> None:
+def print_history(entries: list[dict]) -> None:
     """打印操作历史"""
     if not entries:
         print("No history entries found.")
@@ -197,7 +197,7 @@ def print_history(entries: List[dict]) -> None:
     print("-" * 80)
 
 
-def print_validate_result(key: str, result: Dict) -> None:
+def print_validate_result(key: str, result: dict) -> None:
     """打印单个变量的校验结果"""
     if result['valid']:
         print(f"  ✓ {key}: valid")
@@ -209,7 +209,7 @@ def print_validate_result(key: str, result: Dict) -> None:
         print(f"      warning: {warn}")
 
 
-def print_validate_all(results: Dict[str, Dict]) -> None:
+def print_validate_all(results: dict[str, dict]) -> None:
     """打印所有变量的校验结果"""
     if not results:
         print("No schema definitions found.")
@@ -229,7 +229,7 @@ def print_validate_all(results: Dict[str, Dict]) -> None:
         print(f"{total - valid_count} variable(s) failed validation.")
 
 
-def print_schema(schema: Dict) -> None:
+def print_schema(schema: dict) -> None:
     """打印 schema 定义"""
     if not schema:
         print("No schema definitions found.")

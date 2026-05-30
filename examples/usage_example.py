@@ -8,15 +8,16 @@
 - 使用 formatters 模块进行终端输出
 """
 
-from evm.manager import EnvironmentManager
-from evm.formatters import (
-    print_vars_table,
-    print_vars_by_group,
-    print_search_results,
-    print_groups,
-)
-from evm.exceptions import EVMError
 import os
+
+from evm.exceptions import EVMError
+from evm.formatters import (
+    print_groups,
+    print_search_results,
+    print_vars_by_group,
+    print_vars_table,
+)
+from evm.manager import EnvironmentManager
 
 
 def main():

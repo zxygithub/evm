@@ -5,6 +5,85 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-05-30
+
+### Code Quality and Test Coverage Improvements
+
+Based on comprehensive code review (CODE_REVIEW.md), this release addresses all critical issues and significantly improves test coverage.
+
+#### Type System Improvements (mypy)
+- **Fixed 36 mypy errors** → 0 errors
+- Added `# type: ignore[attr-defined]` comments to Mixin classes (standard practice for Mixin pattern)
+- Added `# type: ignore[no-any-return]` for `Dict.get()` and `json.loads()` returns
+- Created `_typing.py` with `EnvironmentManagerProtocol` for Mixin type hints
+- Unified Python version to 3.9+ across all tools (pyproject.toml, ruff, mypy)
+
+#### Code Quality Improvements (ruff)
+- **Fixed 43 ruff errors** → 0 errors
+- Auto-fixed import sorting issues
+- Replaced deprecated `typing.Dict`, `typing.List`, `typing.Tuple` with built-in `dict`, `list`, `tuple` (Python 3.9+)
+- Updated Makefile `lint` target to use `ruff check` instead of `flake8`
+
+#### Test Coverage Improvements
+- **Total coverage: 78% → 89%**
+- **formatters.py: 47% → 100%** (added 39 comprehensive tests in `test_formatters.py`)
+- **cli.py: 74% → 87%** (added 63 new tests across multiple test files)
+- **__main__.py: 0% → 67%** (added 13 tests in `test_main_module.py`)
+- **Total tests: 237 → 360** (+123 tests)
+
+#### New Test Files
+- `tests/test_formatters.py`: Comprehensive tests for all formatter functions
+- `tests/test_main_module.py`: Tests for `__main__.py` entry point
+- `tests/test_cli_additional.py`: Additional CLI command tests
+- `tests/test_cli_coverage.py`: Extended CLI coverage tests
+
+#### Documentation Updates
+- Added Platform Support section to README (explicitly stating POSIX-only, no Windows)
+- Updated Python requirement from 3.6+ to 3.9+
+- Updated test count from 225 to 360
+- Created comprehensive Chinese system functional specification (`docs/USER_GUIDE_CN.md`)
+
+#### Configuration Updates
+- Unified Python version requirement to 3.9+ in:
+  - `pyproject.toml` (`requires-python`)
+  - `pyproject.toml` (`[tool.ruff]` target-version)
+  - `pyproject.toml` (`[tool.mypy]` python_version)
+  - `README.md` (requirements section)
+- Updated `Makefile` lint target to use `ruff check` instead of `flake8`
+
+### Technical Details
+
+#### Mixin Type Annotations
+The project uses Mixin pattern for code organization. Mixin classes access attributes (`self.env_file`, `self._env_vars`, `self._save_env_vars()`) from the main `EnvironmentManager` class. Standard practice is to use `# type: ignore[attr-defined]` comments since these attributes are provided by the main class at runtime.
+
+#### Python 3.9+ Requirement
+Updated to Python 3.9+ to:
+- Use built-in generic types (`dict`, `list`, `tuple`) instead of `typing.Dict`, `typing.List`, `typing.Tuple`
+- Align with mypy's minimum supported version
+- Take advantage of modern Python features
+
+#### Test Coverage Strategy
+- **formatters.py**: Tested all 11 public functions with various input combinations
+- **cli.py**: Tested command registry pattern, error handling, and edge cases
+- **__main__.py**: Tested module entry point with `python -m evm` invocation
+
+### Verification
+
+All checks pass:
+```bash
+$ mypy evm/
+Success: no issues found in 14 source files
+
+$ ruff check .
+All checks passed!
+
+$ pytest tests/ -v
+============================= 360 passed in 2.16s ==============================
+
+$ pytest --cov=evm --cov-report=term-missing tests/
+TOTAL                 1590    181    89%
+```
+
 ## [2.1.0] - 2026-05-30
 
 ### 工程化：迁移到 pyproject.toml

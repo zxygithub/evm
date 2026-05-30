@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-05-30
+
+### 工程化：迁移到 pyproject.toml
+
+#### 构建系统现代化
+- **新增 `pyproject.toml`**：采用 PEP 621 标准，使用 `setuptools` 构建后端
+- **`setup.py` 精简为兼容性 shim**：仅保留 `setup()` 调用，所有元数据迁移到 `pyproject.toml`
+- **`requirements.txt` 重构**：指向 `pyproject.toml`，保留向后兼容
+
+#### 可选依赖组
+- `[dev]`：完整开发环境（pytest, pytest-cov, ruff, mypy）
+- `[test]`：仅测试工具（pytest, pytest-cov）
+- `[lint]`：仅代码检查工具（ruff, mypy）
+
+#### 工具链配置
+- **ruff**：替代 black + flake8，统一 linter + formatter（配置在 `[tool.ruff]`）
+- **mypy**：类型检查配置（`[tool.mypy]`）
+- **pytest**：测试配置（`[tool.pytest.ini_options]`）
+- **coverage**：覆盖率配置（`[tool.coverage]`）
+
+#### 代码质量改进
+- ruff 自动修复 import 排序（33 处）
+- 清理 3 处未使用变量（`_completion.py`、`cli.py`、`test_main.py`）
+- ruff check 全部通过，237 个测试全部通过
+
+### 安装方式变更
+```bash
+# 核心安装（无第三方依赖）
+pip install .
+
+# 开发安装（含 pytest, ruff, mypy）
+pip install ".[dev]"
+
+# 仅测试工具
+pip install ".[test]"
+
+# 仅 lint 工具
+pip install ".[lint]"
+```
+
 ## [2.0.0] - 2026-05-30
 
 ### Code Review 全部修复（18 项安全/质量改进）

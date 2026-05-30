@@ -1,47 +1,15 @@
 #!/usr/bin/env python3
-"""Setup script for EVM (Environment Variable Manager)."""
+"""
+Minimal setup.py shim for backward compatibility.
 
-from setuptools import setup, find_packages
+All project metadata and configuration is now in pyproject.toml.
+This file is kept only for legacy tools that do not support PEP 517/518.
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
+For modern usage, prefer:
+    pip install -e .           # core install
+    pip install -e ".[dev]"    # development install
+"""
 
-setup(
-    name="evm-cli",
-    version="2.0.0",
-    author="EVM Tool",
-    author_email="evm@example.com",
-    description="A command-line tool for managing environment variables",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    url="https://github.com/zxygithub/evm",
-    packages=find_packages(),
-    classifiers=[
-        "Development Status :: 4 - Beta",
-        "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: MacOS",
-        "Operating System :: POSIX :: Linux",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Topic :: Software Development :: Libraries :: Python Modules",
-        "Topic :: System :: Systems Administration",
-        "Topic :: Utilities",
-    ],
-    python_requires=">=3.6",
-    install_requires=[
-        # No external dependencies for core functionality
-    ],
-    entry_points={
-        "console_scripts": [
-            "evm=evm.cli:main",
-        ],
-    },
-    include_package_data=True,
-    zip_safe=False,
-)
+from setuptools import setup
+
+setup()

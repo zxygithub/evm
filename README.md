@@ -2,7 +2,7 @@
 
 A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
-**Version**: 2.0.0
+**Version**: 2.1.0
 
 ## Features
 
@@ -53,12 +53,17 @@ evm/
 │   └── test_case/            # Test configuration files
 ├── docs/
 │   ├── CHANGELOG.md          # Version history
-│   └── ANALYSIS.md           # Project analysis report
+│   ├── ANALYSIS.md           # Project analysis report
+│   ├── USER_GUIDE_CN.md      # 中文系统功能说明书
+│   ├── AGENT_CLI_EVALUATION.md
+│   └── CODE_REVIEW.md
+├── skill/                    # AI Agent Skill (evm-agent)
+├── pyproject.toml            # PEP 621 project metadata & tool config
+├── setup.py                  # Backward-compatible setup shim
+├── requirements.txt          # Thin wrapper pointing to pyproject.toml
 ├── README.md                 # This file
 ├── LICENSE                   # MIT License
-├── Makefile                  # Build automation
-├── setup.py                  # Python package setup
-└── requirements.txt          # Python dependencies
+└── Makefile                  # Build automation
 ```
 
 ## Quick Start
@@ -66,11 +71,23 @@ evm/
 ### Installation
 
 ```bash
-# From source (development mode)
-pip install -e .
+# Core install (no third-party dependencies)
+pip install .
+
+# Development install (includes pytest, ruff, mypy)
+pip install ".[dev]"
+
+# Test-only install
+pip install ".[test]"
+
+# Lint-only install
+pip install ".[lint]"
+
+# From source (editable/development mode)
+pip install -e ".[dev]"
 
 # For current user only
-pip install --user -e .
+pip install --user -e ".[dev]"
 
 # Verify installation
 evm --version
@@ -594,20 +611,23 @@ except KeyNotFoundError as e:
 ## Development
 
 ```bash
-# Install for development
-pip install -e .
+# Install for development (includes pytest, ruff, mypy)
+pip install -e ".[dev]"
 
 # Run tests
-make test
+python -m pytest tests/ -v
 
 # Run tests with coverage
-make test-coverage
+python -m pytest tests/ --cov=evm --cov-report=term-missing
 
-# Lint
-make lint
+# Lint with ruff
+ruff check evm/ tests/
 
-# Format code
-make format
+# Auto-fix lint issues
+ruff check --fix evm/ tests/
+
+# Type check with mypy
+mypy evm/
 
 # Run demo
 make demo

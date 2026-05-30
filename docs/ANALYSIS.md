@@ -1,7 +1,7 @@
 # EVM 项目评估报告 v6
 
 **评估日期：** 2026-05-30
-**项目版本：** 2.0.0
+**项目版本：** 2.1.0
 **评估范围：** 代码评审报告 18 项修复验证
 
 ---
@@ -92,9 +92,13 @@
 
 ## 五、下一步建议（P3 工程化）
 
-1. `pyproject.toml` 迁移
-2. GitHub Actions CI/CD
-3. pre-commit hooks (black, ruff, mypy)
-4. 发布 PyPI
-5. 用户主密码支持（可选加密增强）
-6. Sphinx 文档生成
+| # | 项目 | 状态 |
+|---|------|------|
+| 1 | `pyproject.toml` 迁移 | ✅ 已完成 (v2.1.0) |
+| 2 | ruff 替代 black + flake8 | ✅ 已完成 (v2.1.0) |
+| 3 | mypy 类型检查配置 | ✅ 已完成 (v2.1.0) |
+| 4 | GitHub Actions CI/CD | 待实施 |
+| 5 | pre-commit hooks | 待实施 |
+| 6 | 发布 PyPI | 待实施 |
+| 7 | Sphinx 文档生成 | 待实施 |
+| 8 | 加密模块提取为 `_crypto.py` | ✅ 已完成 (v2.0.0) |

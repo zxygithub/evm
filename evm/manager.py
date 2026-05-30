@@ -25,7 +25,6 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -96,7 +95,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         if not self.env_file.exists():
             return {}
         try:
-            with open(self.env_file, 'r', encoding='utf-8') as f:
+            with open(self.env_file, encoding='utf-8') as f:
                 content = f.read().strip()
                 if not content:
                     return {}
@@ -182,7 +181,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 return
-            except (IOError, OSError):
+            except OSError:
                 time.sleep(0.05)
         raise LockTimeoutError(str(self.env_file), self.lock_timeout)
 
@@ -398,7 +397,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
                     f"Editor exited with code {result.returncode}"
                 )
 
-            with open(tmp_path, 'r', encoding='utf-8') as f:
+            with open(tmp_path, encoding='utf-8') as f:
                 new_value = f.read().rstrip('\n')
 
             if new_value == current_value:
@@ -428,7 +427,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         )
 
         return {
-            'version': '2.0.0',
+            'version': '2.1.0',
             'author': 'EVM Tool',
             'license': 'MIT',
             'python': sys.version.split()[0],

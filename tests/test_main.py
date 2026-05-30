@@ -18,18 +18,12 @@ from evm.exceptions import (
     BackupError,
     CorruptedStorageError,
     DecryptionError,
-    EVMError,
-    ExportError,
     GroupNotFoundError,
     GroupOperationError,
     ImportError_,
     KeyAlreadyExistsError,
     KeyNotFoundError,
-    LockTimeoutError,
-    OperationCancelledError,
     SchemaError,
-    StorageError,
-    ValidationError,
 )
 from evm.manager import EnvironmentManager
 
@@ -1273,6 +1267,7 @@ class TestJSONOutput(unittest.TestCase):
     def _run_json(self, args):
         """运行命令并捕获 JSON 输出"""
         import io
+
         from evm.cli import main
         old_stdout = sys.stdout
         sys.stdout = captured = io.StringIO()
@@ -1603,7 +1598,7 @@ class TestExitCodes(unittest.TestCase):
 
     def test_empty_file_not_corrupted(self):
         """空存储文件应视为空 {}，不触发 CorruptedStorageError"""
-        with open(self.env_file, 'w') as f:
+        with open(self.env_file, 'w'):
             pass  # 创建空文件
         code = self._run(['list'])
         self.assertEqual(code, 0)
@@ -1633,6 +1628,7 @@ class TestSubparserGlobalArgs(unittest.TestCase):
 
     def _run(self, args):
         import io
+
         from evm.cli import main
         old_stdout = sys.stdout
         sys.stdout = captured = io.StringIO()
@@ -1771,6 +1767,7 @@ class TestQuietMode(unittest.TestCase):
     def _run_quiet(self, args, capture_stdout=True):
         """运行命令并捕获输出"""
         import io
+
         from evm.cli import main
         old_stdout = sys.stdout
         if capture_stdout:
@@ -1788,6 +1785,7 @@ class TestQuietMode(unittest.TestCase):
     def _run_quiet_json(self, args):
         """运行 --json --quiet 命令"""
         import io
+
         from evm.cli import main
         old_stdout = sys.stdout
         sys.stdout = captured = io.StringIO()
@@ -1859,6 +1857,7 @@ class TestJSONErrorOutput(unittest.TestCase):
     def _run_json_err(self, args):
         """运行命令并捕获 stderr JSON 输出"""
         import io
+
         from evm.cli import main
         old_stderr = sys.stderr
         sys.stderr = captured = io.StringIO()
@@ -2116,8 +2115,9 @@ class TestCryptoModule(TestEnvironmentManagerBase):
         self.assertEqual(len(stream), 100)
 
     def test_encrypt_decrypt_roundtrip(self):
-        from evm._crypto import encrypt_v3, decrypt_v3
         import hashlib
+
+        from evm._crypto import decrypt_v3, encrypt_v3
 
         def derive(salt):
             return hashlib.pbkdf2_hmac(
@@ -2131,8 +2131,9 @@ class TestCryptoModule(TestEnvironmentManagerBase):
         self.assertEqual(decrypted, plaintext)
 
     def test_tampered_ciphertext_detected(self):
-        from evm._crypto import encrypt_v3, decrypt_v3
         import hashlib
+
+        from evm._crypto import decrypt_v3, encrypt_v3
 
         def derive(salt):
             return hashlib.pbkdf2_hmac(

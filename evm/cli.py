@@ -163,7 +163,7 @@ Exit Codes:
         """,
     )
 
-    parser.add_argument('--version', action='version', version='%(prog)s 2.0.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 2.1.0')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Show detailed version information')
     parser.add_argument('--env-file',
@@ -348,7 +348,7 @@ Exit Codes:
     sc_del = sc_sub.add_parser('delete', help='Remove schema definition')
     sc_del.add_argument('key')
 
-    sc_list = sc_sub.add_parser('list', help='List all schema definitions')
+    sc_sub.add_parser('list', help='List all schema definitions')
 
     sc_val = sc_sub.add_parser('validate', help='Validate against schema')
     sc_val.add_argument('key', nargs='?', help='Variable (omit for all)')

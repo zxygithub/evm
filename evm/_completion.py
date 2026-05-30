@@ -63,7 +63,6 @@ complete -F _evm_completions evm
 
 def generate_zsh_completion(commands: list) -> str:
     """生成 zsh 补全脚本"""
-    cmds = ' '.join(commands)
     return f'''#compdef evm
 
 _evm() {{

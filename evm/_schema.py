@@ -16,7 +16,6 @@ from typing import Dict, Optional
 
 from .exceptions import SchemaError
 
-
 # 内置格式校验正则
 FORMAT_PATTERNS = {
     'url': re.compile(
@@ -64,7 +63,7 @@ class SchemaMixin:
         if not schema_file.exists():
             return {}
         try:
-            with open(schema_file, 'r', encoding='utf-8') as f:
+            with open(schema_file, encoding='utf-8') as f:
                 return json.load(f)
         except json.JSONDecodeError as e:
             print(

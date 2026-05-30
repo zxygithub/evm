@@ -4,7 +4,6 @@ Test runner for EVM test case files.
 This script helps test EVM with the sample configuration files.
 """
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -40,7 +39,7 @@ def main():
     # 测试2：导入 JSON 配置
     json_file = test_case_dir / "test_config.json"
     if json_file.exists():
-        run_command(f"evm load {json_file}", f"导入 JSON 配置文件")
+        run_command(f"evm load {json_file}", "导入 JSON 配置文件")
     else:
         print(f"警告: {json_file} 不存在")
 
@@ -50,7 +49,7 @@ def main():
     # 测试4：导入 .env 文件（替换模式）
     env_file = test_case_dir / "test_config.env"
     if env_file.exists():
-        run_command(f"evm load {env_file} --replace", f"导入 .env 文件（替换模式）")
+        run_command(f"evm load {env_file} --replace", "导入 .env 文件（替换模式）")
     else:
         print(f"警告: {env_file} 不存在")
 

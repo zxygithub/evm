@@ -6,7 +6,6 @@ EVM 导入导出 Mixin
 """
 
 import json
-import re
 import shlex
 from pathlib import Path
 from typing import Dict, Optional
@@ -67,7 +66,7 @@ class IOMixin:
             return 'env'
         # 内容嗅探
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, encoding='utf-8') as f:
                 content = f.read(100)
                 return 'json' if content.strip().startswith('{') else 'env'
         except OSError:
@@ -80,7 +79,7 @@ class IOMixin:
             ImportFailedError: JSON 解析失败
         """
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, encoding='utf-8') as f:
                 data = json.load(f)
             if not isinstance(data, dict):
                 raise ImportFailedError(
@@ -100,7 +99,7 @@ class IOMixin:
         #9: 校验 key 名安全性
         """
         loaded = {}
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#'):
@@ -345,7 +344,7 @@ class IOMixin:
             raise BackupError(f"Backup file not found: {backup_file}")
 
         try:
-            with open(backup_path, 'r', encoding='utf-8') as f:
+            with open(backup_path, encoding='utf-8') as f:
                 backup_data = json.load(f)
 
             if 'variables' not in backup_data:
@@ -379,7 +378,7 @@ class IOMixin:
             raise BackupError(f"File not found: {backup_file}")
 
         try:
-            with open(backup_path, 'r', encoding='utf-8') as f:
+            with open(backup_path, encoding='utf-8') as f:
                 backup_data = json.load(f)
 
             if 'variables' in backup_data:

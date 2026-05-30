@@ -9,7 +9,7 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 
 class HistoryMixin:
@@ -68,7 +68,7 @@ class HistoryMixin:
 
         entries = []
         try:
-            with open(history_file, 'r', encoding='utf-8') as f:
+            with open(history_file, encoding='utf-8') as f:
                 for line in f:
                     line = line.strip()
                     if line:
@@ -98,7 +98,7 @@ class HistoryMixin:
             return
 
         try:
-            with open(history_file, 'r', encoding='utf-8') as f:
+            with open(history_file, encoding='utf-8') as f:
                 lines = f.readlines()
 
             if len(lines) <= self.MAX_HISTORY_ENTRIES:

@@ -1,11 +1,14 @@
-# Core dependencies
-# None - EVM uses only Python standard library
-
-# Development dependencies (optional)
-# Uncomment for development/testing:
-
-# pytest>=7.0.0
-# pytest-cov>=4.0.0
-# black>=23.0.0
-# flake8>=6.0.0
-# mypy>=1.0.0
+# EVM Runtime Dependencies
+# ─────────────────────────────────────────────────────────────
+# EVM uses ONLY the Python standard library.
+# No third-party packages are required at runtime.
+#
+# Installation:
+#   pip install .                 # core install (no extras)
+#   pip install ".[dev]"          # with development tools (pytest, ruff, mypy)
+#   pip install ".[test]"         # with test tools only (pytest, pytest-cov)
+#   pip install ".[lint]"         # with lint tools only (ruff, mypy)
+#
+# All dependency versions are defined in pyproject.toml.
+# This file is kept for tools that do not support PEP 621.
+-e .

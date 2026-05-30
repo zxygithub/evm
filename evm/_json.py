@@ -12,7 +12,7 @@ JSON 信封格式:
 
 import json
 import sys
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 def json_output(data: Any, quiet: bool = False) -> None:

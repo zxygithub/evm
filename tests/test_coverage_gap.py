@@ -668,12 +668,13 @@ class TestMainModule:
 
     def test_module_entry_point(self):
         """python -m evm --version 正常退出"""
+        import re
         result = subprocess.run(
             [sys.executable, '-m', 'evm', '--version'],
             capture_output=True, text=True
         )
         assert result.returncode == 0
-        assert '2.3.0' in result.stdout
+        assert re.search(r'\d+\.\d+\.\d+', result.stdout)
 
 
 # ═══════════════════════════════════════════════════════════

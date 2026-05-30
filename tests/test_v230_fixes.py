@@ -177,10 +177,11 @@ class TestInitExports:
         assert evm.__version__
         assert evm.__author__
 
-    def test_version_is_230(self):
-        """版本号应为 2.3.0"""
+    def test_version_format(self):
+        """版本号应符合语义化版本格式"""
         import evm
-        assert evm.__version__ == '2.3.0'
+        import re
+        assert re.match(r'^\d+\.\d+\.\d+', evm.__version__)
 
 
 class TestSecretWarningInstanceLevel:

@@ -3,12 +3,19 @@
 EVM Shell 补全脚本生成
 
 支持 bash, zsh, fish。
+M3: 为 get/delete/edit/expand/validate/rename/copy 等命令
+提供动态变量名补全（通过 evm list --json --quiet 获取 key 列表）。
 """
 
 
 def generate_bash_completion(commands: list) -> str:
-    """生成 bash 补全脚本"""
+    """生成 bash 补全脚本（含动态变量名补全）"""
     cmds = ' '.join(commands)
+    # 需要变量名补全的命令
+    key_cmds = ' '.join([
+        'get', 'delete', 'edit', 'expand', 'validate',
+        'rename', 'copy', 'setg', 'getg', 'deleteg', 'listg',
+    ])
     return f'''# EVM bash completion
 _evm_completions() {{
     local cur prev opts
@@ -18,7 +25,14 @@ _evm_completions() {{
 
     # Top-level commands
     local commands="{cmds}"
-    local global_opts="--help --version --verbose --env-file --dry-run --force"
+    local global_opts="--help --version --verbose --env-file --json --quiet --dry-run --force"
+    local key_cmds="{key_cmds}"
+
+    # 动态获取变量名列表
+    _evm_keys() {{
+        evm list --json --quiet 2>/dev/null | \\
+            python3 -c "import sys,json; d=json.load(sys.stdin); print(' '.join(d.get('data',{{}}).keys()))" 2>/dev/null
+    }}
 
     case "${{prev}}" in
         evm)
@@ -37,8 +51,16 @@ _evm_completions() {{
             COMPREPLY=( $(compgen -W "--secret --help" -- "${{cur}}") )
             return 0
             ;;
-        get)
-            COMPREPLY=( $(compgen -W "--secret --help" -- "${{cur}}") )
+        get|delete|edit|expand|validate|rename|copy)
+            COMPREPLY=( $(compgen -W "$(_evm_keys) --secret --help" -- "${{cur}}") )
+            return 0
+            ;;
+        setg|getg|deleteg|listg)
+            # 分组名补全（从现有 key 中提取分组前缀）
+            local groups
+            groups=$(evm groups --json --quiet 2>/dev/null | \\
+                python3 -c "import sys,json; d=json.load(sys.stdin); print(' '.join(d.get('data',{{}}).get('groups',{{}}).keys()))" 2>/dev/null)
+            COMPREPLY=( $(compgen -W "${{groups}} --help" -- "${{cur}}") )
             return 0
             ;;
         export)
@@ -55,6 +77,14 @@ _evm_completions() {{
             ;;
     esac
 
+    # 如果前一个词是需要 key 补全的命令，尝试补全变量名
+    for kc in ${{key_cmds}}; do
+        if [[ "${{COMP_WORDS[1]}}" == "$kc" ]]; then
+            COMPREPLY=( $(compgen -W "$(_evm_keys)" -- "${{cur}}") )
+            return 0
+        fi
+    done
+
     COMPREPLY=( $(compgen -W "${{commands}} ${{global_opts}}" -- "${{cur}}") )
 }}
 complete -F _evm_completions evm
@@ -62,7 +92,7 @@ complete -F _evm_completions evm
 
 
 def generate_zsh_completion(commands: list) -> str:
-    """生成 zsh 补全脚本"""
+    """生成 zsh 补全脚本（含动态变量名补全）"""
     return f'''#compdef evm
 
 _evm() {{
@@ -71,11 +101,29 @@ _evm() {{
         {chr(10).join(f"        '{c}:{c} command'" for c in commands)}
     )
 
+    # 动态获取变量名列表
+    _evm_keys() {{
+        local keys
+        keys=(${{(f)"$(evm list --json --quiet 2>/dev/null | \\
+            python3 -c "import sys,json; d=json.load(sys.stdin); print('\\n'.join(d.get('data',{{}}).keys()))" 2>/dev/null)"}})
+        _describe 'variable' keys
+    }}
+
+    # 动态获取分组名列表
+    _evm_groups() {{
+        local groups
+        groups=(${{(f)"$(evm groups --json --quiet 2>/dev/null | \\
+            python3 -c "import sys,json; d=json.load(sys.stdin); print('\\n'.join(d.get('data',{{}}).get('groups',{{}}).keys()))" 2>/dev/null)"}})
+        _describe 'group' groups
+    }}
+
     _arguments -C \\
         '--help[Show help]' \\
         '--version[Show version]' \\
         '(-v --verbose)'{{-v,--verbose}}'[Show detailed info]' \\
         '--env-file[Storage file path]:file:_files' \\
+        '--json[Output structured JSON]' \\
+        '--quiet[Suppress output]' \\
         '--dry-run[Preview changes]' \\
         '--force[Skip confirmation]' \\
         '1: :->command' \\
@@ -87,6 +135,15 @@ _evm() {{
             ;;
         args)
             case $words[1] in
+                get|delete|edit|expand|validate)
+                    _evm_keys
+                    ;;
+                rename|copy)
+                    _evm_keys
+                    ;;
+                setg|getg|deleteg|listg)
+                    _evm_groups
+                    ;;
                 completion)
                     _values 'shell' bash zsh fish
                     ;;
@@ -106,7 +163,7 @@ _evm "$@"
 
 
 def generate_fish_completion(commands: list) -> str:
-    """生成 fish 补全脚本"""
+    """生成 fish 补全脚本（含动态变量名补全）"""
     lines = ['# EVM fish completion', '']
 
     # Disable file completion by default
@@ -119,6 +176,8 @@ def generate_fish_completion(commands: list) -> str:
     lines.append("complete -c evm -l version -d 'Show version'")
     lines.append("complete -c evm -s v -l verbose -d 'Show detailed info'")
     lines.append("complete -c evm -l env-file -d 'Storage file path' -r -F")
+    lines.append("complete -c evm -l json -d 'Output structured JSON'")
+    lines.append("complete -c evm -l quiet -s q -d 'Suppress output'")
     lines.append("complete -c evm -l dry-run -d 'Preview changes'")
     lines.append("complete -c evm -l force -d 'Skip confirmation'")
     lines.append('')
@@ -127,6 +186,19 @@ def generate_fish_completion(commands: list) -> str:
     lines.append('# Commands')
     for cmd in commands:
         lines.append(f"complete -c evm -n '__fish_use_subcommand' -a '{cmd}' -d '{cmd}'")
+    lines.append('')
+
+    # Dynamic variable name completion helper
+    lines.append('# Dynamic variable name completion')
+    lines.append('function __evm_keys')
+    lines.append('    evm list --json --quiet 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); [print(k) for k in d.get(\'data\',{})]" 2>/dev/null')
+    lines.append('end')
+    lines.append('')
+
+    # Dynamic group name completion helper
+    lines.append('function __evm_groups')
+    lines.append('    evm groups --json --quiet 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); [print(k) for k in d.get(\'data\',{}).get(\'groups\',{})]" 2>/dev/null')
+    lines.append('end')
     lines.append('')
 
     # Sub-options
@@ -141,6 +213,18 @@ def generate_fish_completion(commands: list) -> str:
     lines.append("complete -c evm -n '__fish_seen_subcommand_from completion' -xa 'bash zsh fish'")
     lines.append("complete -c evm -n '__fish_seen_subcommand_from history' -s n -l limit -d 'Number of entries' -x")
     lines.append("complete -c evm -n '__fish_seen_subcommand_from schema' -xa 'set get delete validate list'")
+    lines.append('')
+
+    # Variable name completion for relevant commands
+    lines.append('# Variable name completion')
+    for cmd in ['get', 'delete', 'edit', 'expand', 'validate', 'rename', 'copy']:
+        lines.append(f"complete -c evm -n '__fish_seen_subcommand_from {cmd}' -a '(__evm_keys)'")
+    lines.append('')
+
+    # Group name completion
+    lines.append('# Group name completion')
+    for cmd in ['setg', 'getg', 'deleteg', 'listg']:
+        lines.append(f"complete -c evm -n '__fish_seen_subcommand_from {cmd}' -a '(__evm_groups)'")
 
     return '\n'.join(lines) + '\n'
 

@@ -6,14 +6,16 @@ EVM 分组操作 Mixin
 """
 
 
+from ._typing import EnvironmentManagerProtocol
 from .exceptions import (
     GroupNotFoundError,
     GroupOperationError,
+    KeyAlreadyExistsError,
     KeyNotFoundError,
 )
 
 
-class GroupMixin:
+class GroupMixin(EnvironmentManagerProtocol):
     """分组操作 mixin — 提供 setg/getg/deleteg/groups 等功能"""
 
     def set_grouped(
@@ -23,8 +25,8 @@ class GroupMixin:
         full_key = f"{group}:{key}" if group else key
         if dry_run:
             return f"[DRY-RUN] Would set: [{group}]{key} = {value}"
-        self._env_vars[full_key] = value  # type: ignore[attr-defined]
-        self._save_env_vars()  # type: ignore[attr-defined]
+        self._env_vars[full_key] = value
+        self._save_env_vars()
         return f"Set: [{group}]{key} = {value}"
 
     def get_grouped(self, group: str, key: str) -> str:
@@ -34,12 +36,12 @@ class GroupMixin:
             KeyNotFoundError: 变量不存在
         """
         full_key = f"{group}:{key}" if group else key
-        value = self._env_vars.get(full_key)  # type: ignore[attr-defined]
+        value = self._env_vars.get(full_key)
         if value is None and group:
-            value = self._env_vars.get(key)  # type: ignore[attr-defined]
+            value = self._env_vars.get(key)
         if value is None:
             raise KeyNotFoundError(full_key)
-        return value  # type: ignore[no-any-return]
+        return value
 
     def delete_grouped(
         self, group: str, key: str, dry_run: bool = False
@@ -50,12 +52,12 @@ class GroupMixin:
             KeyNotFoundError: 变量不存在
         """
         full_key = f"{group}:{key}" if group else key
-        if full_key not in self._env_vars:  # type: ignore[attr-defined]
+        if full_key not in self._env_vars:
             raise KeyNotFoundError(full_key)
         if dry_run:
             return f"[DRY-RUN] Would delete: [{group}]{key}"
-        del self._env_vars[full_key]  # type: ignore[attr-defined]
-        self._save_env_vars()  # type: ignore[attr-defined]
+        del self._env_vars[full_key]
+        self._save_env_vars()
         return f"Deleted: [{group}]{key}"
 
     def list_groups(self) -> dict[str, int]:
@@ -65,7 +67,7 @@ class GroupMixin:
             {group_name: variable_count} 字典
         """
         groups: dict[str, int] = {}
-        for key in self._env_vars:  # type: ignore[attr-defined]
+        for key in self._env_vars:
             if ':' in key:
                 group = key.split(':', 1)[0]
                 groups[group] = groups.get(group, 0) + 1
@@ -84,7 +86,7 @@ class GroupMixin:
             )
 
         prefix = f"{group}:"
-        to_delete = [k for k in self._env_vars if k.startswith(prefix)]  # type: ignore[attr-defined]
+        to_delete = [k for k in self._env_vars if k.startswith(prefix)]
 
         if not to_delete:
             raise GroupNotFoundError(group)
@@ -96,8 +98,8 @@ class GroupMixin:
             )
 
         for key in to_delete:
-            del self._env_vars[key]  # type: ignore[attr-defined]
-        self._save_env_vars()  # type: ignore[attr-defined]
+            del self._env_vars[key]
+        self._save_env_vars()
         return f"Deleted group '{group}' and all its variables ({len(to_delete)} total)"
 
     def move_to_group(
@@ -107,15 +109,19 @@ class GroupMixin:
 
         Raises:
             KeyNotFoundError: 变量不存在
+            KeyAlreadyExistsError: 目标分组中已有同名 key
         """
-        if key not in self._env_vars:  # type: ignore[attr-defined]
+        if key not in self._env_vars:
             raise KeyNotFoundError(key)
 
         new_key = f"{new_group}:{key}"
+        if new_key in self._env_vars and new_key != key:
+            raise KeyAlreadyExistsError(new_key)
+
         if dry_run:
             return f"[DRY-RUN] Would move: {key} -> {new_key}"
 
-        value = self._env_vars.pop(key)  # type: ignore[attr-defined]
-        self._env_vars[new_key] = value  # type: ignore[attr-defined]
-        self._save_env_vars()  # type: ignore[attr-defined]
+        value = self._env_vars.pop(key)
+        self._env_vars[new_key] = value
+        self._save_env_vars()
         return f"Moved: {key} -> {new_key}"

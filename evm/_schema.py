@@ -10,10 +10,11 @@ import ipaddress
 import json
 import os
 import re
-import sys
+import warnings
 from pathlib import Path
 from typing import Optional
 
+from ._typing import EnvironmentManagerProtocol
 from .exceptions import SchemaError
 
 # 内置格式校验正则
@@ -47,17 +48,18 @@ def validate_ipv6(value: str) -> bool:
         return False
 
 
-class SchemaMixin:
+class SchemaMixin(EnvironmentManagerProtocol):
     """Schema mixin — 变量格式定义和校验"""
 
     def _get_schema_file(self) -> Path:
         """获取 schema 文件路径"""
-        return self.env_file.parent / 'schema.json'  # type: ignore[attr-defined,no-any-return]
+        return self.env_file.parent / 'schema.json'
 
     def _load_schema(self) -> dict:
         """加载 schema 定义
 
-        #10: 损坏时打印警告到 stderr，而非静默丢弃。
+        损坏时使用 warnings.warn() 通知调用者，而非直接 print()，
+        保持 mixin 不做 I/O 的设计原则。
         """
         schema_file = self._get_schema_file()
         if not schema_file.exists():
@@ -66,17 +68,19 @@ class SchemaMixin:
             with open(schema_file, encoding='utf-8') as f:
                 return json.load(f)  # type: ignore[no-any-return]
         except json.JSONDecodeError as e:
-            print(
-                f"Warning: Schema file is corrupted ({e}). "
+            warnings.warn(
+                f"Schema file is corrupted ({e}). "
                 f"All schema definitions will be ignored until fixed.",
-                file=sys.stderr,
+                RuntimeWarning,
+                stacklevel=2,
             )
             return {}
         except OSError as e:
-            print(
-                f"Warning: Cannot read schema file ({e}). "
+            warnings.warn(
+                f"Cannot read schema file ({e}). "
                 f"All schema definitions will be ignored.",
-                file=sys.stderr,
+                RuntimeWarning,
+                stacklevel=2,
             )
             return {}
 
@@ -181,7 +185,7 @@ class SchemaMixin:
             raise SchemaError(f"No schema defined for '{key}'", key)
 
         if value is None:
-            if key not in self._env_vars:  # type: ignore[attr-defined]
+            if key not in self._env_vars:
                 entry = schema[key]
                 if entry.get('required', False):
                     return {
@@ -193,7 +197,7 @@ class SchemaMixin:
                     'valid': True, 'errors': [],
                     'warnings': ['Variable not set (not required)'],
                 }
-            value = self._env_vars[key]  # type: ignore[attr-defined]
+            value = self._env_vars[key]
 
         return self._validate_value(key, str(value), schema[key])
 
@@ -203,9 +207,9 @@ class SchemaMixin:
         results = {}
 
         for key, entry in schema.items():
-            if key in self._env_vars:  # type: ignore[attr-defined]
+            if key in self._env_vars:
                 results[key] = self._validate_value(
-                    key, str(self._env_vars[key]), entry  # type: ignore[attr-defined]
+                    key, str(self._env_vars[key]), entry
                 )
             elif entry.get('required', False):
                 results[key] = {

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from ._schema import VALID_KEY_PATTERN
+from ._typing import EnvironmentManagerProtocol
 from .exceptions import (
     BackupError,
     ExportError,
@@ -43,7 +44,7 @@ def _validate_key_name(key: str) -> bool:
     return bool(VALID_KEY_PATTERN.match(key))
 
 
-class IOMixin:
+class IOMixin(EnvironmentManagerProtocol):
     """导入导出 mixin — 提供 load/export/backup/restore/diff"""
 
     # ── 格式检测与加载辅助方法 ────────────────────────────
@@ -92,13 +93,17 @@ class IOMixin:
                 f"JSON parse error: {e}", str(path)
             ) from e
 
-    def _load_env_file(self, path: Path) -> dict[str, str]:
+    def _load_env_file(self, path: Path) -> tuple[dict[str, str], list[str]]:
         """加载 .env 文件
 
         #8: 使用平衡引号解析
         #9: 校验 key 名安全性
+
+        Returns:
+            (loaded_vars, skipped_keys) — 跳过无效 key 时返回其列表。
         """
-        loaded = {}
+        loaded: dict[str, str] = {}
+        skipped: list[str] = []
         with open(path, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
@@ -106,12 +111,12 @@ class IOMixin:
                     if '=' in line:
                         key, raw_value = line.split('=', 1)
                         key = key.strip()
-                        # #9: 校验 key 名
                         if not _validate_key_name(key):
-                            continue  # 跳过不安全的 key
+                            skipped.append(key)
+                            continue
                         value = _parse_env_value(raw_value)
                         loaded[key] = value
-        return loaded
+        return loaded, skipped
 
     def _load_nested(self, data: dict) -> tuple:
         """处理嵌套 JSON（一级 key 作为分组名）
@@ -233,6 +238,7 @@ class IOMixin:
             # 加载原始数据
             backup_timestamp = None
             groups_detected = 0
+            skipped_keys: list[str] = []
 
             if fmt in ['json', 'backup']:
                 data = self._load_json_file(input_path)
@@ -246,7 +252,7 @@ class IOMixin:
                 else:
                     loaded_vars = data
             elif fmt == 'env':
-                loaded_vars = self._load_env_file(input_path)
+                loaded_vars, skipped_keys = self._load_env_file(input_path)
             else:
                 raise ImportFailedError(
                     f"Unsupported format: {fmt}", input_file
@@ -266,6 +272,11 @@ class IOMixin:
                 parts.append(
                     f"Detected and imported {groups_detected} groups "
                     f"from nested structure"
+                )
+            if skipped_keys:
+                parts.append(
+                    f"Skipped {len(skipped_keys)} invalid key(s): "
+                    f"{', '.join(skipped_keys)}"
                 )
 
             if dry_run:
@@ -290,7 +301,7 @@ class IOMixin:
                     f"from {input_file}"
                 )
 
-            self._save_env_vars()  # type: ignore[attr-defined]
+            self._save_env_vars()
 
             if group:
                 parts.append(f"Variables added to group '{group}'")
@@ -319,14 +330,17 @@ class IOMixin:
 
         if backup_file is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_path = Path.home() / '.evm' / f"backup_{timestamp}.json"
+            backup_path = (
+                self.env_file.parent
+                / f"backup_{timestamp}.json"
+            )
         else:
             backup_path = Path(backup_file)
 
         backup_path.parent.mkdir(parents=True, exist_ok=True)
         backup_data = {
             'timestamp': datetime.now().isoformat(),
-            'variables': self._env_vars,  # type: ignore[attr-defined]
+            'variables': self._env_vars,
         }
 
         try:
@@ -352,13 +366,13 @@ class IOMixin:
 
             restored_vars = backup_data['variables']
             if merge:
-                self._env_vars.update(restored_vars)  # type: ignore[attr-defined]
+                self._env_vars.update(restored_vars)
                 msg = f"Merged {len(restored_vars)} variables from backup"
             else:
-                self._env_vars = restored_vars  # type: ignore[attr-defined]
+                self._env_vars = restored_vars
                 msg = f"Restored {len(restored_vars)} variables from backup"
 
-            self._save_env_vars()  # type: ignore[attr-defined]
+            self._save_env_vars()
 
             timestamp = backup_data.get('timestamp', '')
             if timestamp:

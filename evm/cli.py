@@ -163,7 +163,7 @@ Exit Codes:
         """,
     )
 
-    parser.add_argument('--version', action='version', version='%(prog)s 2.2.0')
+    parser.add_argument('--version', action='version', version='%(prog)s 2.3.0')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Show detailed version information')
     parser.add_argument('--env-file',
@@ -513,10 +513,14 @@ def _cmd_clear(mgr, args, dry_run, force, json_mode, quiet):
     """处理 clear 命令"""
     if not dry_run and not force:
         count = len(mgr._env_vars)
-        if count > 0 and not _confirm(
-            f"This will clear all {count} variables. Continue?"
-        ):
-            raise OperationCancelledError("clear")
+        if count > 0:
+            if not sys.stdin.isatty():
+                raise EVMError(
+                    "Cannot confirm 'clear' in non-interactive mode. "
+                    "Use --force to skip confirmation."
+                )
+            if not _confirm(f"This will clear all {count} variables. Continue?"):
+                raise OperationCancelledError("clear")
     count = len(mgr._env_vars)
     msg = mgr.clear(dry_run=dry_run)
     if json_mode:
@@ -588,6 +592,11 @@ def _cmd_listg(mgr, args, dry_run, force, json_mode, quiet):
 def _cmd_delete_group(mgr, args, dry_run, force, json_mode, quiet):
     """处理 delete-group 命令"""
     if not dry_run and not force:
+        if not sys.stdin.isatty():
+            raise EVMError(
+                "Cannot confirm 'delete-group' in non-interactive mode. "
+                "Use --force to skip confirmation."
+            )
         if not _confirm(
             f"This will delete group '{args.group}' and all its variables. Continue?"
         ):

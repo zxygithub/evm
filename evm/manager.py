@@ -60,8 +60,6 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
     TEMPLATE_PATTERN = re.compile(r'\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}')
     # 文件锁默认超时（秒）
     LOCK_TIMEOUT = 5.0
-    # 首次使用加密功能时的警告标志
-    _secret_warning_shown = False
 
     def __init__(
         self,
@@ -80,6 +78,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
             self.env_file = Path(env_file)
 
         self.lock_timeout = lock_timeout
+        self._secret_warning_shown = False
         self.env_file.parent.mkdir(parents=True, exist_ok=True)
         self._env_vars = self._load_env_vars()
 
@@ -427,7 +426,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         )
 
         return {
-            'version': '2.2.0',
+            'version': '2.3.0',
             'author': 'EVM Tool',
             'license': 'MIT',
             'python': sys.version.split()[0],
@@ -583,8 +582,8 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
 
         # #2: 首次使用加密功能时发出警告
         warning = ''
-        if not EnvironmentManager._secret_warning_shown:
-            EnvironmentManager._secret_warning_shown = True
+        if not self._secret_warning_shown:
+            self._secret_warning_shown = True
             warning = (
                 " [WARNING: Encryption key is derived from machine identity "
                 "(hostname + uid + arch). Changing hostname or migrating to "

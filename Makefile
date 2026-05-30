@@ -36,8 +36,8 @@ lint: ## Run linting
 	ruff check .
 	mypy evm
 
-format: ## Format code with black
-	black evm tests
+format: ## Format code with ruff
+	ruff format evm tests
 
 run: ## Run EVM with example commands
 	@echo "Setting up example environment..."

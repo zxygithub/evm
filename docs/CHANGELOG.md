@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-05-30
+
+### Code Review Remediation (CODE_REVIEW_v2.2.0.md)
+
+Based on the v2.2.0 code review, this release addresses all High and Medium priority issues.
+
+#### High Priority Fixes
+- **H1: StorageProtocol applied to all mixins** — All 4 mixin classes (`IOMixin`, `GroupMixin`, `HistoryMixin`, `SchemaMixin`) now inherit `EnvironmentManagerProtocol`, eliminating all `# type: ignore[attr-defined]` comments. `_typing.py` coverage: 0% → 100%.
+- **H2: History trim lazy + atomic** — `_trim_history()` replaced with `_trim_history_if_needed()` that only fires when entries exceed 1.5× MAX_HISTORY_ENTRIES (was: every call, O(N) scan). Trim operation now uses atomic write (temp file + `os.replace`) to prevent data loss on crash.
+- **H3: Non-interactive confirmation** — `clear` and `delete-group` in non-TTY mode now raise a clear `EVMError` with "Use --force to skip confirmation" message, instead of silently cancelling with a misleading "user cancelled" error.
+
+#### Medium Priority Fixes
+- **M1: Encryption machine-binding docs** — README now prominently documents the machine-binding limitation of encryption keys.
+- **M2: Schema I/O cleanup** — `_load_schema()` replaced `print(stderr)` with `warnings.warn(RuntimeWarning)`, maintaining the "mixin does no I/O" design principle.
+- **M3: Shell completion dynamic keys** — bash/zsh/fish completion scripts now include dynamic variable name completion for `get`, `delete`, `edit`, `expand`, `validate`, `rename`, `copy` commands (calls `evm list --json --quiet`).
+
+#### Additional Fixes
+- **`backup()` uses `self.env_file.parent`** — Default backup path is now relative to the storage file location, not hardcoded `~/.evm/`. Fixes isolation semantics when using `--env-file`.
+- **`move_to_group` conflict detection** — Now raises `KeyAlreadyExistsError` when the target group already has a key with the same name.
+- **`_load_env_file` reports skipped keys** — Load message now includes "Skipped N invalid key(s): ..." when .env import skips invalid key names.
+- **`__init__.py` exports core API** — `EnvironmentManager` and all 17 exceptions now importable from `evm` directly (`from evm import EnvironmentManager, KeyNotFoundError`).
+- **`_secret_warning_shown` instance-level** — Moved from class variable to instance variable, preventing shared state across multiple `EnvironmentManager` instances.
+- **`history.jsonl` file locking** — Write operations now use `fcntl.flock(LOCK_EX)` to prevent line interleaving in concurrent scenarios.
+- **Makefile `format` target** — Updated from `black` to `ruff format`.
+
+#### Test Improvements
+- **Total tests: 360 → 392** (+32 tests)
+- **Total coverage: 89% → 90%**
+- **`_completion.py`: 100%** (was 100%, expanded content)
+- **`_typing.py`: 0% → 100%** (protocol now used by all mixins)
+- New test file: `tests/test_v230_fixes.py` — 32 tests covering all review fixes
+
+### Verification
+```bash
+$ mypy evm/
+Success: no issues found in 14 source files
+
+$ ruff check .
+All checks passed!
+
+$ pytest tests/ -v
+============================= 392 passed in 2.45s ==============================
+
+$ pytest --cov=evm --cov-report=term-missing tests/
+TOTAL                 1646    171    90%
+```
+
 ## [2.2.0] - 2026-05-30
 
 ### Code Quality and Test Coverage Improvements

@@ -2067,26 +2067,24 @@ class TestEnvNewlineExport(TestEnvironmentManagerBase):
 
 
 class TestSchemaCorruptionWarning(TestEnvironmentManagerBase):
-    """#10: 验证 schema 损坏时发出警告"""
+    """验证 schema 损坏时通过 warnings.warn() 发出警告"""
 
     def test_corrupted_schema_warns(self):
-        """损坏的 schema 文件应在 stderr 打印警告"""
-        import io
+        """损坏的 schema 文件应触发 RuntimeWarning"""
+        import warnings as warn_mod
         schema_file = self.manager._get_schema_file()
         schema_file.parent.mkdir(parents=True, exist_ok=True)
         with open(schema_file, 'w') as f:
             f.write('{invalid json')
 
-        old_stderr = sys.stderr
-        sys.stderr = captured = io.StringIO()
-        try:
+        with warn_mod.catch_warnings(record=True) as w:
+            warn_mod.simplefilter("always")
             schema = self.manager._load_schema()
-        finally:
-            sys.stderr = old_stderr
 
         self.assertEqual(schema, {})
-        self.assertIn('Warning', captured.getvalue())
-        self.assertIn('corrupted', captured.getvalue().lower())
+        self.assertTrue(len(w) >= 1)
+        self.assertTrue(issubclass(w[0].category, RuntimeWarning))
+        self.assertIn('corrupted', str(w[0].message).lower())
 
 
 class TestCryptoModule(TestEnvironmentManagerBase):

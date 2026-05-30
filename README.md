@@ -2,7 +2,7 @@
 
 A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
-**Version**: 2.1.0
+**Version**: 2.3.0
 
 ## Features
 
@@ -405,6 +405,8 @@ evm --env-file /path/to/custom.json list
 ```
 
 ### Secrets (Encrypted Variables)
+
+> ⚠️ **Machine-bound encryption**: Encryption keys are derived from machine identity (hostname + uid + arch). Changing hostname, migrating to another machine, or rebuilding Docker containers will make secrets unrecoverable. Use a dedicated secrets manager (Vault, AWS Secrets Manager) for cross-machine scenarios.
 
 ```bash
 # Store an encrypted secret

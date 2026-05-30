@@ -179,8 +179,9 @@ class TestInitExports:
 
     def test_version_format(self):
         """版本号应符合语义化版本格式"""
-        import evm
         import re
+
+        import evm
         assert re.match(r'^\d+\.\d+\.\d+', evm.__version__)
 
 

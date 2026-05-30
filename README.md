@@ -83,6 +83,171 @@ evm --help
 python -m evm --help
 ```
 
+### Your First 5 Minutes with EVM
+
+**1. Basic Operations**
+
+```bash
+# Set a variable
+evm set API_KEY "abc123"
+
+# Get the value back
+evm get API_KEY
+# Output: abc123
+
+# List all variables
+evm list
+# Shows all stored variables in a table format
+```
+
+**2. Use Isolated Storage (Recommended)**
+
+By default, EVM uses `~/.evm/env.json`. For project-specific configs, use `--env-file`:
+
+```bash
+# Create a project-specific config
+evm --env-file ./project.json set DATABASE_URL "postgresql://localhost/mydb"
+evm --env-file ./project.json set API_KEY "project_secret"
+
+# Only affects this file, not your global config
+evm --env-file ./project.json list
+```
+
+**3. JSON Output for Scripts & Agents**
+
+Use `--json` to get structured output (works before or after the command):
+
+```bash
+# Get as JSON (both work)
+evm --env-file ./project.json --json get API_KEY
+evm --env-file ./project.json get API_KEY --json
+# stdout: {"status": "ok", "data": {"key": "API_KEY", "value": "project_secret"}}
+
+# List all as JSON
+evm --env-file ./project.json list --json
+# stdout: {"status": "ok", "data": {"API_KEY": "project_secret", "DATABASE_URL": "..."}}
+
+# Errors go to stderr with error codes
+evm --env-file ./project.json get MISSING --json
+# stderr: {"status": "error", "error": "Environment variable 'MISSING' not found", "error_code": 2}
+# exit code: 2
+```
+
+**4. Preview Changes with Dry-Run**
+
+```bash
+# Preview what would happen without actually writing
+evm --env-file ./project.json set NEW_KEY "value" --dry-run
+# Output: [DRY-RUN] Would set: NEW_KEY=value
+# (Nothing is actually written)
+
+# Works with delete, clear, etc.
+evm --env-file ./project.json delete API_KEY --dry-run
+# Output: [DRY-RUN] Would delete: API_KEY
+```
+
+**5. Manage Multiple Environments**
+
+Use groups to organize dev/staging/prod configurations:
+
+```bash
+# Set variables for different environments
+evm --env-file ./project.json setg dev DATABASE_URL "localhost:5432/dev"
+evm --env-file ./project.json setg prod DATABASE_URL "prod.example.com:5432/prod"
+
+# List by group
+evm --env-file ./project.json listg dev
+# Shows only dev group variables
+
+# List all groups
+evm --env-file ./project.json groups
+# Shows: dev (1 variable), prod (1 variable)
+
+# Export a specific environment
+evm --env-file ./project.json export --group prod --format env -o .env.prod
+```
+
+**6. Encrypt Sensitive Data**
+
+```bash
+# Store encrypted (HKDF + HMAC-CTR encryption)
+evm --env-file ./project.json set --secret DB_PASSWORD "super_secret_password"
+
+# Retrieve decrypted
+evm --env-file ./project.json get --secret DB_PASSWORD
+# Output: super_secret_password
+# Warning: Decrypted secret displayed on terminal (visible in scrollback).
+
+# Note: Encryption keys are machine-bound (hostname + uid + arch)
+# Secrets cannot be migrated to different machines
+```
+
+**7. Run Commands with Environment Variables**
+
+```bash
+# Run a command with all EVM variables injected
+evm --env-file ./project.json exec -- python app.py
+# Your app can access DATABASE_URL, API_KEY, etc. from os.environ
+
+# Exit codes are passed through from the child process
+evm --env-file ./project.json exec -- sh -c 'exit 42'
+echo $?  # Output: 42
+```
+
+**8. Validate Configuration**
+
+```bash
+# Define schemas for validation
+evm --env-file ./project.json schema set DATABASE_URL --format url --required
+evm --env-file ./project.json schema set API_KEY --pattern '^[a-zA-Z0-9]+$'
+
+# Validate all variables
+evm --env-file ./project.json validate
+# Shows which variables pass/fail validation
+
+# Validate a specific variable
+evm --env-file ./project.json validate DATABASE_URL
+```
+
+**9. Backup and Restore**
+
+```bash
+# Create a backup
+evm --env-file ./project.json backup --file backup.json
+
+# Make some changes
+evm --env-file ./project.json set NEW_VAR "value"
+
+# Compare with backup
+evm --env-file ./project.json diff backup.json
+# Shows what was added/removed/changed
+
+# Restore from backup
+evm --env-file ./project.json restore backup.json
+```
+
+**10. Quick Reference**
+
+```bash
+# Essential flags
+--env-file PATH    # Use custom storage file
+--json             # Structured JSON output
+--dry-run          # Preview changes
+--quiet / -q       # Suppress output
+--force            # Skip confirmation prompts
+
+# Common commands
+evm set KEY VALUE          # Set a variable
+evm get KEY                # Get a variable
+evm list                   # List all variables
+evm delete KEY             # Delete a variable
+evm setg GROUP KEY VALUE   # Set in a group
+evm groups                 # List groups
+evm exec -- COMMAND        # Run with env vars
+evm backup                 # Create backup
+evm validate               # Check schemas
+```
+
 ## Usage
 
 ### Basic Commands

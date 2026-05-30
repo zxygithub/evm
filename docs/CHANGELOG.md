@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-05-30
+
+### Test Coverage Deep Dive & Code Review Remediation
+
+This release pushes test coverage from 94% to **98%** and adds a comprehensive development review.
+
+#### Code Review Fixes (M2/L1-L4)
+- **M2: Schema I/O** — `_load_schema()` replaced `print(stderr)` with `warnings.warn(RuntimeWarning)`, maintaining the "mixin does no I/O" principle.
+- **L1: `_completion.py` dynamic key errors** — Silenced `OSError`/`json.JSONDecodeError` in completion key lookup so shell completion degrades gracefully.
+- **L2: `_history.py` JSON decode** — `json.JSONDecodeError` caught alongside `ValueError` for robustness.
+- **L3: `formatters.py` terminal width** — `shutil.get_terminal_size()` fallback for non-TTY environments.
+- **L4: `_crypto.py` HKDF length guard** — Explicit `ValueError` on zero-length HKDF output request.
+
+#### Test Improvements (521 → 575, +54 tests)
+- **`test_coverage_gap.py`** — 54 new tests targeting hard-to-reach error paths across all modules (encryption edge cases, I/O boundary conditions, CLI error handling, schema validation corners).
+- **`test_cli_boundary.py`** — Boundary tests for `cli.py` error branches.
+- **`test_io_boundary.py`** — Boundary tests for `_io.py` import/export edge cases.
+- **`test_v230_fixes.py`** — Additional v1/v2 encryption migration path tests.
+
+#### Coverage Results
+- **Total coverage: 94% → 98%**
+- **`_crypto.py`: 100%** (v1/v2 auto-migration paths fully covered)
+- **`_schema.py`: 99%**
+- **`cli.py`: 98%**
+- **`manager.py`: 97%**
+- **`_completion.py`, `_json.py`, `_groups.py`, `_typing.py`, `formatters.py`, `exceptions.py`, `__init__.py`: 100%**
+
+#### Documentation
+- **Development Review** (`docs/DEVELOPMENT_REVIEW.md`) — Comprehensive project assessment covering engineering quality, feature completeness, gap analysis, and phased roadmap recommendations.
+- **Code Review v2.0.0 Final** (`docs/CODE_REVIEW_v2.0.0_FINAL.md`) — Post-remediation verification report.
+
+#### Other
+- **`.gitignore` optimization** — Consolidated rules, removed test artifacts.
+
+### Verification
+```bash
+$ mypy evm/
+Success: no issues found in 14 source files
+
+$ ruff check .
+All checks passed!
+
+$ pytest tests/ -v
+============================= 575 passed in 4.58s ==============================
+
+$ pytest --cov=evm --cov-report=term-missing tests/
+TOTAL                 1664     41    98%
+```
+
 ## [2.3.0] - 2026-05-30
 
 ### Code Review Remediation (CODE_REVIEW_v2.2.0.md)

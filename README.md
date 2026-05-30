@@ -2,7 +2,7 @@
 
 A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
-**Version**: 2.3.0
+**Version**: 2.4.0
 
 ## Features
 
@@ -58,20 +58,23 @@ evm/
 │   ├── formatters.py         # Terminal output formatting
 │   └── exceptions.py         # Custom exception hierarchy (17 classes)
 ├── examples/                 # Example scripts
-├── tests/                    # Test suite (521 tests)
+├── tests/                    # Test suite (575 tests)
 │   ├── test_main.py          # Unit + integration tests
 │   ├── test_io_boundary.py   # _io.py boundary tests
 │   ├── test_cli_boundary.py  # cli.py boundary tests
 │   ├── test_v230_fixes.py    # v2.3.0 code review fix tests
+│   ├── test_coverage_gap.py  # Coverage gap tests (98% target)
 │   ├── test_formatters.py    # Formatter output tests
 │   └── test_case/            # Test configuration files
 ├── docs/
 │   ├── API_REFERENCE.md      # Python API reference
 │   ├── CHANGELOG.md          # Version history
+│   ├── DEVELOPMENT_REVIEW.md # Development review & roadmap
 │   ├── ANALYSIS.md           # Project analysis report
 │   ├── USER_GUIDE_CN.md      # 中文系统功能说明书
 │   ├── AGENT_CLI_EVALUATION.md
 │   ├── CODE_REVIEW.md
+│   ├── CODE_REVIEW_v2.0.0_FINAL.md
 │   └── CODE_REVIEW_v2.2.0.md
 ├── skill/                    # AI Agent Skill (evm-agent)
 ├── pyproject.toml            # PEP 621 project metadata & tool config

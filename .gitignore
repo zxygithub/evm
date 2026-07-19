@@ -58,6 +58,8 @@ venv.bak/
 # IDE
 # ═══════════════════════════════════════════════════════════
 .vscode/
+.codegraph/
+.codegraph/.gitignore
 .idea/
 *.swp
 *.swo
@@ -99,3 +101,7 @@ backup_*.json
 .remember/
 .cache
 skill-workspace/
+.codegraph/.gitignore
+.gitignore
+.gitignore
+.gitignore

@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-07-19
+
+### Shell Integration: `evm inject` + `evm init` + Auto-Install
+
+This release adds first-class shell integration — load EVM variables into the current shell with one command, zero manual setup.
+
+#### New Commands
+
+- **`evm inject`** — Print shell-sourceable `export KEY='VALUE'` statements to stdout. Use with `eval "$(evm inject)"` to inject variables into the current shell session (the only mechanism that works, since a child process cannot modify its parent's environment).
+  - `--shell bash|zsh|sh|fish` — auto-detected from `$SHELL`; fish uses `set -gx KEY VALUE`
+  - `--group NAME` — inject only a group's variables (strips the `group:` prefix)
+  - `--include-secrets` — decrypt and inject encrypted variables (skipped by default to avoid leaking ciphertext)
+  - `--prefix PREFIX` — namespace all exported keys (e.g. `EVM_`) to avoid overwriting existing shell vars
+  - `--json` / `--dry-run` / `--quiet` — consistent with the rest of the CLI
+  - Values are escaped with `shlex.quote` (spaces, single quotes, `$` all handled)
+
+- **`evm init [shell]`** — Output the shell-integration script (for `eval "$(evm init zsh)"` in your rc file). Subcommands manage rc-file installation:
+  - `evm init zsh --install` — append the integration block to `~/.zshrc`
+  - `evm init zsh --uninstall` — remove the block (line-level deletion, preserves surrounding content)
+  - `evm init zsh --reinstall` — force re-add (useful if rc got out of sync)
+  - `evm init zsh --check` — report whether installed (exit 0/1)
+
+- **`evm-load` shell function** — Bundled with every completion script. A shortcut for `eval "$(evm inject)"` that correctly handles `--env-file` flag positioning (the global flag must precede the `inject` subcommand). Supports pass-through of `--group` / `--include-secrets` / `--prefix`.
+
+#### Auto-Install on First Use
+
+The first time you run any `evm` command, EVM detects your shell from `$SHELL`, appends a one-line integration block to the matching rc file (`~/.zshrc` / `~/.bashrc` / `~/.config/fish/config.fish`), and prints a notice to stderr. Subsequent commands skip (idempotent). The block re-evaluates `evm init` on every shell start, so `evm-load` and tab completion stay in sync with the installed `evm` version automatically.
+
+- **Opt-out**: `EVM_NO_AUTO_INSTALL=1` environment variable
+- **rc footprint**: one `eval "$(evm init <shell>)"` line wrapped in conda-style marker comments (`# >>> evm shell integration >>>` / `# <<< evm shell integration <<<`)
+- **Safety**: auto-install is skipped for `init`/`completion` commands themselves; unknown shells are silently skipped; `--quiet` suppresses the notice
+
+#### Test Improvements (575 → 651, +76 tests)
+- **`tests/test_inject.py`** (+48) — `manager.inject()` unit tests (posix/fish/group/secrets/prefix/quoting/sorting) + CLI `inject` tests + shell-detection tests + end-to-end `eval` roundtrip + `evm-load` regression tests (bash/zsh/fish end-to-end).
+- **`tests/test_shell_integration.py`** (+28) — install/uninstall/is_installed helpers + `evm init` command tests + auto-install tests (opt-out, idempotency, quiet, skip-for-init/completion, unknown shell).
+
+#### Coverage
+- **Total coverage: 98% → 97%** (new feature code added faster than tests; existing modules unchanged at 100%)
+- `evm/cli.py`: 98% | `evm/manager.py`: 97% | `evm/_completion.py`: 95%
+
+#### Documentation
+- README — new "Inject to Current Shell" + "The `evm-load` shortcut" + "Shell Integration (`evm init`)" sections; corrected the misleading `loadmemory` scope note (it only affects the evm process, not the parent shell); features list + project structure updated.
+- `docs/API_REFERENCE.md` — added `inject()` method documentation; version bumped to 2.5.0.
+
+---
+
 ## [2.4.0] - 2026-05-30
 
 ### Test Coverage Deep Dive & Code Review Remediation

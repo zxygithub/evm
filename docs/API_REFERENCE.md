@@ -1,6 +1,6 @@
 # EVM Python API Reference
 
-**Version**: 2.4.0  
+**Version**: 2.5.0  
 **Requirements**: Python 3.9+, POSIX (macOS / Linux)  
 **Dependencies**: None (stdlib only)
 
@@ -581,6 +581,33 @@ exit_code = mgr.execute(['python', 'app.py'])
 **Returns**: The child process exit code.
 
 **Raises**: `CommandNotFoundError` if the executable is not found.
+
+---
+
+#### `inject(shell='sh', group=None, include_secrets=False, prefix=None) -> dict`
+
+Generate shell-sourceable export statements (for `eval "$(evm inject)"`).
+
+```python
+result = mgr.inject(shell='bash')
+# {'shell': 'bash', 'count': 2,
+#  'variables': {'API_KEY': 'abc123', 'DB_URL': 'localhost'},
+#  'skipped': [], 'output': "export API_KEY=abc123\nexport DB_URL=localhost\n"}
+```
+
+**Behavior**:
+- Plain variables → exported
+- Grouped variables (e.g. `dev:DB_URL`) → silently skipped (invalid shell identifiers); use `group='dev'` to strip the prefix and export them
+- Encrypted secrets (`--secret`) → skipped by default (would leak ciphertext); `include_secrets=True` decrypts and exports them
+- Invalid shell identifiers → skipped, reported in `skipped`
+
+**Args**:
+- `shell`: `'bash'` / `'zsh'` / `'sh'` → POSIX `export KEY=VALUE`; `'fish'` → `set -gx KEY VALUE`. Other values fall back to POSIX.
+- `group`: only export this group's variables (strips the `group:` prefix)
+- `include_secrets`: decrypt and include encrypted variables
+- `prefix`: add a prefix to every exported key (e.g. `'EVM_'`)
+
+**Returns**: `dict` with keys `shell`, `count`, `variables`, `skipped`, `output`.
 
 ---
 

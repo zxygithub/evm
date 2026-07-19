@@ -20,6 +20,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -366,6 +367,98 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
             return 130
         except Exception as e:
             raise EVMError(f"Error executing command: {e}")
+
+    # ── 注入 shell ───────────────────────────────────────
+
+    _SHELL_ID_PATTERN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+    def inject(
+        self,
+        shell: str = 'sh',
+        group: Optional[str] = None,
+        include_secrets: bool = False,
+        prefix: Optional[str] = None,
+    ) -> dict:
+        """生成可被 shell eval 的导出语句
+
+        用法: ``eval "$(evm inject)"``
+
+        - 默认只导出非分组变量（含 ``:`` 的 key 不是合法 shell 标识符）。
+        - ``--group NAME`` 时导出该分组变量并去除 ``group:`` 前缀。
+        - 加密变量默认跳过（避免输出密文）；``include_secrets=True``
+          时解密后以明文导出。
+        - 非合法 shell 标识符的 key 会被跳过并记入 ``skipped``。
+
+        Args:
+            shell: 目标 shell —— bash/zsh/sh 输出 POSIX ``export``；
+                fish 输出 ``set -gx``。其余值按 POSIX 处理。
+            group: 仅导出指定分组的变量。
+            include_secrets: 是否解密并导出加密变量。
+            prefix: 给所有导出 key 加前缀（如 ``EVM_``）。
+
+        Returns:
+            dict: ``{shell, count, variables, skipped, output}``
+        """
+        use_fish = shell == 'fish'
+        injected: dict[str, str] = {}
+        skipped: list[str] = []
+
+        group_prefix = f"{group}:" if group else None
+
+        for key, value in self._env_vars.items():
+            # 分组过滤
+            if group_prefix:
+                if not key.startswith(group_prefix):
+                    continue
+                final_key = key[len(group_prefix):]
+            else:
+                # 默认跳过分组变量（含冒号，非合法 shell 标识符）
+                if ':' in key:
+                    continue
+                final_key = key
+
+            # 合法 shell 标识符校验
+            if not self._SHELL_ID_PATTERN.match(final_key):
+                skipped.append(key)
+                continue
+
+            # 加密变量处理（v1 ENC: / v2 ENCv2: / v3 ENCv3:）
+            is_secret = isinstance(value, str) and value.startswith(
+                (self.SECRET_PREFIX,
+                 self.SECRET_V2_PREFIX,
+                 self.SECRET_V3_PREFIX)
+            )
+            if is_secret:
+                if not include_secrets:
+                    skipped.append(key)
+                    continue
+                plain = self.get_secret(key)
+            else:
+                plain = str(value)
+
+            if prefix:
+                final_key = f"{prefix}{final_key}"
+                if not self._SHELL_ID_PATTERN.match(final_key):
+                    skipped.append(key)
+                    continue
+
+            injected[final_key] = plain
+
+        lines = []
+        for k in sorted(injected):
+            v = injected[k]
+            if use_fish:
+                lines.append(f"set -gx {k} {shlex.quote(v)}")
+            else:
+                lines.append(f"export {k}={shlex.quote(v)}")
+
+        return {
+            'shell': shell,
+            'count': len(injected),
+            'variables': injected,
+            'skipped': skipped,
+            'output': '\n'.join(lines) + ('\n' if lines else ''),
+        }
 
     # ── 编辑器编辑 ────────────────────────────────────────
 

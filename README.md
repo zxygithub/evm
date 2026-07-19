@@ -2,7 +2,7 @@
 
 A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
-**Version**: 2.4.0
+**Version**: 2.5.0
 
 ## Features
 
@@ -12,6 +12,7 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 - ✅ **Backup/Restore**: Timestamps and merge support
 - ✅ **Groups**: Namespace-based organization
 - ✅ **Execute**: Run commands with custom environment
+- ✅ **Inject**: Load variables into the current shell via `eval "$(evm inject)"`
 - ✅ **Load to Memory**: Sync variables to system environment
 - ✅ **Secrets**: HKDF+HMAC-CTR encrypted storage (v3) with auto-migration from v1/v2
 - ✅ **Templates**: `{{VAR}}` reference expansion
@@ -21,6 +22,7 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 - ✅ **Schema**: Define and enforce variable formats and constraints
 - ✅ **History**: Operation audit log with JSONL storage
 - ✅ **Shell Completion**: bash, zsh, fish completion script generation
+- ✅ **Shell Integration**: `evm init` auto-installs `evm-load` + completion into your rc on first use
 - ✅ **Interactive Safety**: Confirmation prompts for destructive operations (`--force` to skip)
 - ✅ **JSON Output**: `--json` flag for structured output (agent-friendly, stdout=data, stderr=errors)
 - ✅ **Quiet Mode**: `--quiet` suppresses all human-readable output
@@ -58,8 +60,10 @@ evm/
 │   ├── formatters.py         # Terminal output formatting
 │   └── exceptions.py         # Custom exception hierarchy (17 classes)
 ├── examples/                 # Example scripts
-├── tests/                    # Test suite (575 tests)
+├── tests/                    # Test suite
 │   ├── test_main.py          # Unit + integration tests
+│   ├── test_inject.py        # `evm inject` + `evm-load` tests
+│   ├── test_shell_integration.py  # `evm init` + auto-install tests
 │   ├── test_io_boundary.py   # _io.py boundary tests
 │   ├── test_cli_boundary.py  # cli.py boundary tests
 │   ├── test_v230_fixes.py    # v2.3.0 code review fix tests
@@ -280,6 +284,7 @@ evm delete KEY             # Delete a variable
 evm setg GROUP KEY VALUE   # Set in a group
 evm groups                 # List groups
 evm exec -- COMMAND        # Run with env vars
+eval "$(evm inject)"       # Load vars into current shell
 evm backup                 # Create backup
 evm validate               # Check schemas
 ```
@@ -363,6 +368,8 @@ evm restore backup.json --merge   # Merge with existing
 
 ### Load to System Memory
 
+> ⚠️ **Scope note**: `evm loadmemory` sets `os.environ` inside the **evm process itself**. When the CLI command exits, those variables are gone — your interactive shell does **not** see them. Use `evm inject` (below) to get variables into the current shell, or `manager.load_to_memory()` from a Python script to set them in your own process.
+
 ```bash
 # Load all variables to memory (with EVM: prefix)
 evm loadmemory
@@ -373,8 +380,72 @@ evm loadmemory --no-prefix
 # Load with filter
 evm loadmemory --prefix DEMO_
 
-# Check in Python
-python -c "import os; print(os.environ.get('EVM:API_KEY'))"
+# Only meaningful when called from a Python script that imports evm:
+#   from evm import EnvironmentManager
+#   EnvironmentManager().load_to_memory()
+```
+
+### Inject to Current Shell
+
+`evm inject` prints shell-sourceable `export` statements to stdout. Wrap it in `eval "$( ... )"` to load variables into your **current** shell session:
+
+```bash
+# Inject all non-grouped variables into the current shell
+eval "$(evm inject)"
+
+# Verify they're now in your shell
+echo "$API_KEY"
+
+# Target a specific shell (auto-detected from $SHELL by default)
+eval "$(evm inject --shell bash)"
+eval "$(evm inject --shell fish)"   # fish uses `set -gx KEY VALUE`
+
+# Inject only a group's variables (the `group:` prefix is stripped)
+eval "$(evm inject --group prod)"
+
+# Add a prefix to every exported key
+eval "$(evm inject --prefix EVM_)"
+
+# Also decrypt and inject secret variables (stored with --secret)
+eval "$(evm inject --include-secrets)"
+
+# Preview what would be injected, without eval-ing it
+evm inject --dry-run
+
+# Structured output for scripts/agents
+evm inject --json
+```
+
+How `inject` decides what to export:
+
+| Variable kind | Default | With flag |
+|---|---|---|
+| Plain (e.g. `API_KEY`) | ✅ exported | — |
+| Grouped (e.g. `dev:DB_URL`) | ⏭️ silently skipped (invalid shell identifier) | `--group dev` strips the prefix and exports |
+| Secret (stored with `--secret`) | ⏭️ skipped (would leak ciphertext) | `--include-secrets` decrypts and exports |
+| Invalid shell identifier | ⏭️ skipped, reported in `--json`/`--dry-run` | — |
+
+### The `evm-load` shortcut
+
+Installing shell completion (see [Shell Completion](#shell-completion)) also defines an `evm-load` shell function that wraps `eval "$(evm inject)"` for you. It correctly handles the `--env-file` global-flag positioning so you don't have to:
+
+```bash
+# After sourcing the completion script (bash/zsh/fish), just:
+evm-load                              # inject from default ~/.evm/env.json
+evm-load --env-file ./project.json    # inject from a project-specific file
+evm-load --group prod                 # inject only the prod group
+evm-load --include-secrets            # also decrypt and inject secrets
+evm-load --prefix EVM_                # namespace all keys to avoid collisions
+
+# Verify
+echo "$API_KEY"
+```
+
+Without completion installed, you can still type the `eval` form by hand, or add the alias yourself:
+
+```bash
+# ~/.zshrc or ~/.bashrc
+alias evm-load='eval "$(evm inject)"'
 ```
 
 ### Execute Commands
@@ -489,6 +560,55 @@ evm history --limit 50
 evm history --clear
 ```
 
+### Shell Integration (`evm init`)
+
+EVM can install a shell-integration snippet into your rc file (`~/.zshrc`, `~/.bashrc`, `~/.config/fish/config.fish`). The snippet is **one line** that re-evaluates `evm init` on every shell start — so `evm-load`, tab completion, and any future integration stay in sync with the installed `evm` version automatically (no need to re-install after an upgrade).
+
+**Auto-install on first use:** the first time you run any `evm` command, EVM detects your shell from `$SHELL`, appends the integration block to the matching rc file, and prints a notice to stderr. Subsequent commands skip (idempotent). This is the zero-config path — you don't have to do anything.
+
+```bash
+# Just use evm normally — on first run it prints:
+#   Installed evm shell integration to ~/.zshrc
+#   Restart your shell (or source the rc file) to enable `evm-load` and tab completion.
+#   Set EVM_NO_AUTO_INSTALL=1 to skip this.
+
+# After restarting the shell, both `evm-load` and tab completion are available.
+```
+
+**Manual control** (if you prefer explicit, or the auto-install didn't fit your setup):
+
+```bash
+# Explicitly install (same as what auto-install does, but on demand)
+evm init zsh --install        # or bash / fish
+
+# Check whether it's installed
+evm init zsh --check          # exit 0 = installed, 1 = not
+
+# Remove the integration block from your rc file
+evm init zsh --uninstall
+
+# Force re-add (useful if your rc got out of sync)
+evm init zsh --reinstall
+```
+
+**What the rc block looks like** (conda-style markers, easy to grep/remove):
+
+```bash
+# >>> evm shell integration >>>
+# Auto-added by evm. Remove with: evm init zsh --uninstall
+eval "$(evm init zsh)"
+# <<< evm shell integration <<<
+```
+
+**Opt out of auto-install** — if you don't want EVM touching your rc file automatically:
+
+```bash
+export EVM_NO_AUTO_INSTALL=1   # in your rc, or just for one command:
+EVM_NO_AUTO_INSTALL=1 evm get API_KEY
+```
+
+> 💡 The integration block installs both **tab completion** and the **`evm-load`** function (a shortcut for `eval "$(evm inject)"` that handles `--env-file` positioning). See [The `evm-load` shortcut](#the-evm-load-shortcut).
+
 ### Shell Completion
 
 ```bash
@@ -503,6 +623,8 @@ echo 'source ~/.evm-completion.zsh' >> ~/.zshrc
 # fish
 evm completion fish > ~/.config/fish/completions/evm.fish
 ```
+
+> 💡 Each completion script also installs an **`evm-load`** shell function — a shortcut for `eval "$(evm inject)"` that handles `--env-file` flag positioning for you. See [The `evm-load` shortcut](#the-evm-load-shortcut) above.
 
 ### Interactive Safety
 

@@ -7,6 +7,8 @@ M3: 为 get/delete/edit/expand/validate/rename/copy 等命令
 提供动态变量名补全（通过 evm list --json --quiet 获取 key 列表）。
 """
 
+from pathlib import Path
+
 
 def generate_bash_completion(commands: list) -> str:
     """生成 bash 补全脚本（含动态变量名补全）"""
@@ -93,7 +95,31 @@ _evm_completions() {{
     COMPREPLY=( $(compgen -W "${{commands}} ${{global_opts}}" -- "${{cur}}") )
 }}
 complete -F _evm_completions evm
+''' + _evm_load_posix('bash')
+
+
+_EVM_LOAD_POSIX_TEMPLATE = '''# evm-load: inject EVM variables into the current shell
+# Usage: evm-load [--env-file PATH] [--group NAME] [--include-secrets] [--prefix PREFIX]
+evm-load() {
+    local evf=""
+    local -a rest=()
+    while (($#)); do
+        case "$1" in
+            --env-file)    evf="$2"; shift 2 ;;
+            --env-file=*)  evf="${1#--env-file=}"; shift ;;
+            *)             rest+=("$1"); shift ;;
+        esac
+    done
+    local -a pre=()
+    [[ -n "$evf" ]] && pre=(--env-file "$evf")
+    eval "$(evm "${pre[@]}" inject --shell __SHELL__ "${rest[@]}")"
+}
 '''
+
+
+def _evm_load_posix(shell: str) -> str:
+    """Return the evm-load shell function for a POSIX shell (bash/zsh)."""
+    return _EVM_LOAD_POSIX_TEMPLATE.replace('__SHELL__', shell)
 
 
 def generate_zsh_completion(commands: list) -> str:
@@ -169,7 +195,7 @@ _evm() {{
 }}
 
 _evm "$@"
-'''
+''' + _evm_load_posix('zsh')
 
 
 def generate_fish_completion(commands: list) -> str:
@@ -242,6 +268,20 @@ def generate_fish_completion(commands: list) -> str:
     lines.append('# Group name completion')
     for cmd in ['setg', 'getg', 'deleteg', 'listg']:
         lines.append(f"complete -c evm -n '__fish_seen_subcommand_from {cmd}' -a '(__evm_groups)'")
+    lines.append('')
+
+    # evm-load: inject EVM variables into the current shell
+    lines.append('# evm-load: inject EVM variables into the current shell')
+    lines.append('# Usage: evm-load [--env-file PATH] [--group NAME] [--include-secrets] [--prefix PREFIX]')
+    lines.append('function evm-load')
+    lines.append('    argparse --ignore-unknown --name=evm-load \'e/env-file=\' -- $argv')
+    lines.append('    or return')
+    lines.append('    if set -q _flag_env_file')
+    lines.append('        evm --env-file $_flag_env_file inject --shell fish $argv | source')
+    lines.append('    else')
+    lines.append('        evm inject --shell fish $argv | source')
+    lines.append('    end')
+    lines.append('end')
 
     return '\n'.join(lines) + '\n'
 
@@ -251,3 +291,106 @@ SHELL_GENERATORS = {
     'zsh': generate_zsh_completion,
     'fish': generate_fish_completion,
 }
+
+
+# ── Shell 集成（rc 文件自动安装/卸载）──────────────────────
+
+# 标记块（conda 风格）—— rc 文件中可被 grep / 行级删除
+INTEGRATION_MARKER_START = '# >>> evm shell integration >>>'
+INTEGRATION_MARKER_END = '# <<< evm shell integration <<<'
+
+# Shell → rc 文件路径
+SHELL_RC_MAP: dict[str, str] = {
+    'bash': '~/.bashrc',
+    'zsh': '~/.zshrc',
+    'fish': '~/.config/fish/config.fish',
+}
+
+
+def get_rc_path(shell: str):
+    """返回 shell 对应 rc 文件路径（Path），未知 shell 返回 None。"""
+    rc = SHELL_RC_MAP.get(shell)
+    if rc is None:
+        return None
+    return Path(rc).expanduser()
+
+
+def integration_block(shell: str) -> str:
+    """生成要追加到 rc 文件的标记块文本。"""
+    return (
+        f'\n{INTEGRATION_MARKER_START}\n'
+        f'# Auto-added by evm. Remove with: evm init {shell} --uninstall\n'
+        f'eval "$(evm init {shell})"\n'
+        f'{INTEGRATION_MARKER_END}\n'
+    )
+
+
+def is_integration_installed(shell: str) -> bool:
+    """检查该 shell 的 rc 文件是否已含 evm 标记块。"""
+    rc = get_rc_path(shell)
+    if rc is None or not rc.exists():
+        return False
+    try:
+        content = rc.read_text(encoding='utf-8')
+    except OSError:
+        return False
+    return INTEGRATION_MARKER_START in content
+
+
+def install_integration(shell: str) -> tuple[bool, str]:
+    """把集成块追加到 shell 的 rc 文件。
+
+    Returns:
+        (success, message)
+    """
+    rc = get_rc_path(shell)
+    if rc is None:
+        return False, f"Unknown shell: {shell}"
+
+    if is_integration_installed(shell):
+        return True, f"Already installed in {rc}"
+
+    try:
+        rc.parent.mkdir(parents=True, exist_ok=True)
+        with open(rc, 'a', encoding='utf-8') as f:
+            f.write(integration_block(shell))
+        return True, f"Installed evm shell integration to {rc}"
+    except OSError as e:
+        return False, f"Failed to install to {rc}: {e}"
+
+
+def uninstall_integration(shell: str) -> tuple[bool, str]:
+    """从 shell 的 rc 文件移除集成块（行级删除）。"""
+    rc = get_rc_path(shell)
+    if rc is None:
+        return False, f"Unknown shell: {shell}"
+    if not rc.exists():
+        return True, f"Nothing to remove ({rc} does not exist)"
+
+    try:
+        content = rc.read_text(encoding='utf-8')
+        if INTEGRATION_MARKER_START not in content:
+            return True, f"Nothing to remove (marker not found in {rc})"
+
+        # 行级删除：从 start 标记行删到 end 标记行（含两端）
+        lines = content.split('\n')
+        out: list[str] = []
+        i = 0
+        while i < len(lines):
+            if lines[i].strip() == INTEGRATION_MARKER_START:
+                # 跳过到 end 标记行（含）
+                while i < len(lines) and lines[i].strip() != INTEGRATION_MARKER_END:
+                    i += 1
+                i += 1  # 跳过 end 行
+                continue
+            out.append(lines[i])
+            i += 1
+
+        new_content = '\n'.join(out)
+        # 去除因删除可能留下的尾部空行
+        new_content = new_content.rstrip('\n') + '\n' if new_content.strip() else ''
+        rc.write_text(new_content, encoding='utf-8')
+        return True, f"Removed evm shell integration from {rc}"
+    except OSError as e:
+        return False, f"Failed to uninstall from {rc}: {e}"
+

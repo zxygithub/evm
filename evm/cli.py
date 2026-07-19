@@ -24,10 +24,16 @@ EVM 命令行接口
 """
 
 import argparse
+import os
 import sys
 from typing import Optional
 
-from ._completion import SHELL_GENERATORS
+from ._completion import (
+    SHELL_GENERATORS,
+    install_integration,
+    is_integration_installed,
+    uninstall_integration,
+)
 from ._json import json_error, json_output
 from .exceptions import (
     BackupError,
@@ -90,9 +96,9 @@ ALL_COMMANDS = [
     'export', 'load',
     'backup', 'restore',
     'search', 'rename', 'copy',
-    'exec', 'loadmemory',
+    'exec', 'loadmemory', 'inject',
     'edit', 'info', 'diff', 'expand',
-    'validate', 'history', 'schema', 'completion',
+    'validate', 'history', 'schema', 'completion', 'init',
 ]
 
 
@@ -301,6 +307,31 @@ Exit Codes:
     lm_p.add_argument('--prefix', '-p')
     lm_p.add_argument('--no-prefix', action='store_true')
 
+    # ── 注入 shell ───────────────────────────────────────
+
+    inj_p = _sp(
+        'inject',
+        help='Print shell-sourceable exports (use with eval)',
+    )
+    inj_p.add_argument(
+        '--shell', '-s',
+        choices=['bash', 'zsh', 'sh', 'fish'],
+        help='Target shell (default: detect from $SHELL)',
+    )
+    inj_p.add_argument(
+        '--group', '-g',
+        help='Inject only this group (strips the group: prefix)',
+    )
+    inj_p.add_argument(
+        '--include-secrets',
+        action='store_true',
+        help='Decrypt and inject secret variables',
+    )
+    inj_p.add_argument(
+        '--prefix',
+        help='Add a prefix to all exported keys (e.g. EVM_)',
+    )
+
     # ── 编辑/信息/Diff/展开 ───────────────────────────────
 
     ed_p = _sp('edit', help='Edit value in $EDITOR')
@@ -358,6 +389,33 @@ Exit Codes:
     co_p.add_argument('shell', choices=['bash', 'zsh', 'fish'],
                       help='Shell type')
 
+    # init: 输出可 eval 的集成脚本，或管理 rc 文件安装
+    init_p = _sp(
+        'init',
+        help='Output shell integration script (use with eval), '
+             'or manage rc-file installation',
+    )
+    init_p.add_argument(
+        'shell', nargs='?', choices=['bash', 'zsh', 'fish'],
+        help='Shell type (default: detect from $SHELL)',
+    )
+    init_p.add_argument(
+        '--install', action='store_true',
+        help='Append the integration line to the shell rc file',
+    )
+    init_p.add_argument(
+        '--uninstall', action='store_true',
+        help='Remove the integration block from the shell rc file',
+    )
+    init_p.add_argument(
+        '--reinstall', action='store_true',
+        help='Remove then re-add the integration block',
+    )
+    init_p.add_argument(
+        '--check', action='store_true',
+        help='Report whether integration is installed (exit 0=yes, 1=no)',
+    )
+
     return parser
 
 
@@ -397,6 +455,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not args.command:
         parser.print_help()
         return 0
+
+    # 自动安装 shell 集成（跳过 init/completion 自身，避免递归/噪声）
+    if args.command not in ('init', 'completion'):
+        _ensure_shell_integration(quiet)
 
     dry_run = getattr(args, 'dry_run', False)
     force = getattr(args, 'force', False)
@@ -739,6 +801,49 @@ def _cmd_loadmemory(mgr, args, dry_run, force, json_mode, quiet):
     return 0
 
 
+def _detect_shell() -> str:
+    """从 $SHELL 推断 shell 类型，回退 'sh'"""
+    shell_env = os.environ.get('SHELL', '')
+    base = shell_env.rsplit('/', 1)[-1].lower()
+    if base in ('bash', 'zsh', 'sh', 'fish'):
+        return base
+    return 'sh'
+
+
+def _cmd_inject(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 inject 命令 —— 输出可被 shell eval 的导出语句
+
+    用法: eval "$(evm inject)"
+    """
+    shell = getattr(args, 'shell', None) or _detect_shell()
+    result = mgr.inject(
+        shell=shell,
+        group=getattr(args, 'group', None),
+        include_secrets=getattr(args, 'include_secrets', False),
+        prefix=getattr(args, 'prefix', None),
+    )
+
+    if json_mode:
+        json_output(result, quiet)
+    elif dry_run:
+        # 预览：人类可读，不输出可 eval 的语句
+        print(
+            f"[DRY-RUN] Would inject {result['count']} variable(s) "
+            f"into {result['shell']} shell."
+        )
+        if result['skipped']:
+            print(
+                f"Skipped {len(result['skipped'])}: "
+                f"{', '.join(sorted(result['skipped']))}"
+            )
+        if result['variables']:
+            for k in sorted(result['variables']):
+                print(f"  {k}")
+    elif not quiet:
+        sys.stdout.write(result['output'])
+    return 0
+
+
 def _cmd_edit(mgr, args, dry_run, force, json_mode, quiet):
     """处理 edit 命令"""
     msg = mgr.edit(args.key)
@@ -831,6 +936,102 @@ def _cmd_completion(mgr, args, dry_run, force, json_mode, quiet):
     return 0
 
 
+def _resolve_shell(args) -> str:
+    """解析 init 命令的目标 shell：显式参数优先，否则从 $SHELL 推断。"""
+    shell: Optional[str] = getattr(args, 'shell', None)
+    if shell:
+        return shell
+    return _detect_shell()
+
+
+def _cmd_init(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 init 命令
+
+    - 无 flag：输出可被 eval 的集成脚本（同 completion）
+    --install：把标记块追加到 rc
+    --uninstall：从 rc 移除标记块
+    --reinstall：先移除再追加
+    --check：报告是否已安装（退出码 0/1）
+    """
+    shell = _resolve_shell(args)
+
+    if getattr(args, 'check', False):
+        installed = is_integration_installed(shell)
+        if json_mode:
+            json_output({'shell': shell, 'installed': installed}, quiet)
+        elif not quiet:
+            print(f"Integration for {shell}: "
+                  f"{'installed' if installed else 'not installed'}")
+        return 0 if installed else 1
+
+    if getattr(args, 'uninstall', False):
+        ok, msg = uninstall_integration(shell)
+        if json_mode:
+            json_output({'shell': shell, 'message': msg, 'ok': ok}, quiet)
+        elif not quiet:
+            print(msg)
+        return 0 if ok else 1
+
+    if getattr(args, 'reinstall', False):
+        uninstall_integration(shell)
+        ok, msg = install_integration(shell)
+        if json_mode:
+            json_output({'shell': shell, 'message': msg, 'ok': ok}, quiet)
+        elif not quiet:
+            print(msg)
+        return 0 if ok else 1
+
+    if getattr(args, 'install', False):
+        ok, msg = install_integration(shell)
+        if json_mode:
+            json_output({'shell': shell, 'message': msg, 'ok': ok}, quiet)
+        elif not quiet:
+            print(msg)
+            if ok and 'Installed' in msg:
+                print(
+                    "Restart your shell (or open a new one) to enable "
+                    "`evm-load` and tab completion.",
+                    file=sys.stderr,
+                )
+        return 0 if ok else 1
+
+    # 默认：输出集成脚本（供 eval 使用）
+    generator = SHELL_GENERATORS.get(shell)
+    if generator:
+        print(generator(ALL_COMMANDS), end='')
+    else:
+        raise EVMError(f"Unsupported shell: {shell}")
+    return 0
+
+
+def _ensure_shell_integration(quiet: bool) -> None:
+    """在任意 evm 命令启动时检查并自动安装 shell 集成。
+
+    - EVM_NO_AUTO_INSTALL=1 时跳过
+    - $SHELL 无法识别时静默跳过
+    - 已安装则跳过（幂等）
+    - 未安装则追加标记块到 rc，并往 stderr 打一行提示
+    """
+    if os.environ.get('EVM_NO_AUTO_INSTALL'):
+        return
+
+    shell = _detect_shell()
+    if shell not in SHELL_GENERATORS:
+        return  # 未知 shell，静默跳过
+
+    if is_integration_installed(shell):
+        return  # 已装，跳过
+
+    ok, msg = install_integration(shell)
+    if ok and not quiet:
+        print(
+            f"{msg}  Restart your shell (or source the rc file) "
+            f"to enable `evm-load` and tab completion.  "
+            f"Set EVM_NO_AUTO_INSTALL=1 to skip this.",
+            file=sys.stderr,
+        )
+
+
 # ── 命令注册表 ──────────────────────────────────────────────
 
 COMMAND_HANDLERS = {
@@ -855,6 +1056,7 @@ COMMAND_HANDLERS = {
     'copy': _cmd_copy,
     'exec': _cmd_exec,
     'loadmemory': _cmd_loadmemory,
+    'inject': _cmd_inject,
     'edit': _cmd_edit,
     'info': _cmd_info,
     'diff': _cmd_diff,
@@ -863,6 +1065,7 @@ COMMAND_HANDLERS = {
     'history': _cmd_history,
     'schema': _cmd_schema,
     'completion': _cmd_completion,
+    'init': _cmd_init,
 }
 
 

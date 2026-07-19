@@ -1,6 +1,6 @@
 # EVM Python API Reference
 
-**Version**: 2.5.0  
+**Version**: 2.6.0  
 **Requirements**: Python 3.9+, POSIX (macOS / Linux)  
 **Dependencies**: None (stdlib only)
 

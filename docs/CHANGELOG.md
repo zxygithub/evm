@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-07-19
+
+### New: `evm upgrade` — Self-upgrade from PyPI
+
+Check for a newer `evm` release on PyPI and pip-install it in one step. Pure standard-library implementation (urllib + subprocess), no new dependencies.
+
+#### New Commands
+
+- **`evm upgrade`** — Check PyPI; if a newer version exists, run `pip install --upgrade evm-cli` using the same Python interpreter that runs `evm` (so the correct installation is upgraded).
+- **`evm upgrade --check`** — Only check, don't install. Exit 0 = up to date, 1 = update available (or network error). Mirrors the `evm init --check` exit-code convention.
+- **`--dry-run`** — Print the pip command that would run, without executing it.
+- **`--force`** — Skip the pre-check and run pip directly.
+- **`--json` / `--quiet`** — Consistent with the rest of the CLI (stdout = JSON data, stderr = errors). `--check` emits `{"current", "latest", "update_available"}`; the upgrade path emits `{"current", "new_version", "action", "upgraded", "message"}`.
+- The `upgrade` command does **not** trigger shell-integration auto-install (consistent with `init`/`completion`), keeping upgrade output clean.
+- Network-unreachable is handled gracefully: `--check` reports `latest: unknown` and exits 1; a plain `evm upgrade` aborts before touching pip.
+
+#### New module & tests
+- **`evm/_upgrade.py`** — version comparison (`is_newer`, numeric segment-aware), PyPI JSON-API query (`fetch_latest_version`), and `perform_upgrade` (returns a typed `action` ∈ {`upgraded`, `already_latest`, `dry_run`, `failed`, `network_error`}). Coverage **99%** (67 stmts, 1 miss).
+- **`tests/test_upgrade.py`** (+45 tests) — pure-function tests (version compare, PyPI fetch success/failure modes), `perform_upgrade` matrix (already-latest / dry-run / success / pip-failure / OSError / timeout / force-skips-precheck), and CLI tests for `--check` / `--dry-run` / `--json` / `--quiet` / `--force` plus the auto-install-skip invariant.
+
+#### Version-consistency fix
+- `evm --version` and `manager.info()` previously returned a stale hardcoded `2.3.0` while `evm.__version__` was `2.5.0`. Both now derive from `__version__` so they stay in sync automatically across future releases (`cli.py` imports `__version__`; `manager.info()` does a lazy `from . import __version__` to avoid circular-init).
+
+#### Tests & Coverage
+- **651 → 696 tests (+45).** Total coverage holds at **97%** (1966 stmts, 54 miss). `evm/cli.py` at 98%, `evm/_upgrade.py` at 99%.
+
+#### Documentation
+- README — new "Self-Upgrade (`evm upgrade`)" section + quick-reference entries + features list + project structure (added `_upgrade.py`, `_typing.py`, and the previously-missing test files); version bumped to 2.6.0.
+- `docs/API_REFERENCE.md` — version header bumped to 2.6.0.
+
+#### Verification
+```
+$ python -m pytest tests/ -q
+696 passed in 3.26s
+
+$ ruff check evm/ tests/
+All checks passed!
+
+$ mypy evm/
+Success: no issues found in 15 source files
+
+$ python -m evm --version
+evm 2.6.0
+
+$ python -m evm upgrade --check --json
+{"status": "ok", "data": {"current": "2.6.0", "latest": "2.5.0", "update_available": false}}
+```
+
+---
+
 ## [2.5.0] - 2026-07-19
 
 ### Shell Integration: `evm inject` + `evm init` + Auto-Install

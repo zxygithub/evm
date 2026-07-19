@@ -2,7 +2,7 @@
 
 A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
-**Version**: 2.5.0
+**Version**: 2.6.0
 
 ## Features
 
@@ -23,6 +23,7 @@ A powerful command-line tool for managing environment variables on macOS and Lin
 - ✅ **History**: Operation audit log with JSONL storage
 - ✅ **Shell Completion**: bash, zsh, fish completion script generation
 - ✅ **Shell Integration**: `evm init` auto-installs `evm-load` + completion into your rc on first use
+- ✅ **Self-Upgrade**: `evm upgrade` checks PyPI and pip-installs the latest version
 - ✅ **Interactive Safety**: Confirmation prompts for destructive operations (`--force` to skip)
 - ✅ **JSON Output**: `--json` flag for structured output (agent-friendly, stdout=data, stderr=errors)
 - ✅ **Quiet Mode**: `--quiet` suppresses all human-readable output
@@ -57,6 +58,8 @@ evm/
 │   ├── _completion.py        # Shell completion generators (bash/zsh/fish)
 │   ├── _json.py              # JSON output helpers (agent-friendly)
 │   ├── _crypto.py            # HKDF + HMAC-CTR encryption module
+│   ├── _upgrade.py           # Self-upgrade: PyPI version check + pip install
+│   ├── _typing.py            # Shared typing helpers (Protocol mixins)
 │   ├── formatters.py         # Terminal output formatting
 │   └── exceptions.py         # Custom exception hierarchy (17 classes)
 ├── examples/                 # Example scripts
@@ -64,8 +67,13 @@ evm/
 │   ├── test_main.py          # Unit + integration tests
 │   ├── test_inject.py        # `evm inject` + `evm-load` tests
 │   ├── test_shell_integration.py  # `evm init` + auto-install tests
+│   ├── test_upgrade.py       # `evm upgrade` tests
 │   ├── test_io_boundary.py   # _io.py boundary tests
 │   ├── test_cli_boundary.py  # cli.py boundary tests
+│   ├── test_cli_additional.py  # cli.py additional coverage
+│   ├── test_cli_coverage.py  # cli.py coverage gap tests
+│   ├── test_main_entry.py    # `evm` entry-point tests
+│   ├── test_main_module.py   # `python -m evm` entry tests
 │   ├── test_v230_fixes.py    # v2.3.0 code review fix tests
 │   ├── test_coverage_gap.py  # Coverage gap tests (98% target)
 │   ├── test_formatters.py    # Formatter output tests
@@ -287,6 +295,8 @@ evm exec -- COMMAND        # Run with env vars
 eval "$(evm inject)"       # Load vars into current shell
 evm backup                 # Create backup
 evm validate               # Check schemas
+evm upgrade                # Upgrade to latest PyPI release
+evm upgrade --check        # Check for updates only
 ```
 
 ## Usage
@@ -559,6 +569,35 @@ evm history --limit 50
 # Clear history
 evm history --clear
 ```
+
+### Self-Upgrade (`evm upgrade`)
+
+Check PyPI for a newer `evm` release and pip-install it in one step. Uses only the standard library — no extra dependencies.
+
+```bash
+# Check whether a newer version is available (no changes made)
+evm upgrade --check
+# exit 0 = up to date, exit 1 = update available (or network error)
+
+# Upgrade to the latest release
+evm upgrade
+#  → Upgraded from 2.5.0 to 2.6.0.
+
+# Preview the pip command without running it
+evm upgrade --dry-run
+
+# Skip the pre-check and run pip directly
+evm upgrade --force
+
+# Structured JSON output (stdout = data, stderr = errors)
+evm upgrade --check --json
+# stdout: {"status": "ok", "data": {"current": "2.5.0", "latest": "2.6.0", "update_available": true}}
+
+evm upgrade --json
+# stdout: {"status": "ok", "data": {"current": "2.5.0", "new_version": "2.6.0", "action": "upgraded", "upgraded": true, "message": "Upgraded from 2.5.0 to 2.6.0."}}
+```
+
+`evm upgrade` calls `pip install --upgrade evm-cli` using the **same Python interpreter** that runs `evm`, so it upgrades the correct installation. If the network is unreachable, `--check` reports `unknown` and exits 1; a plain `evm upgrade` aborts before touching pip.
 
 ### Shell Integration (`evm init`)
 

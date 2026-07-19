@@ -507,6 +507,8 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
 
     def info(self) -> dict[str, object]:
         """返回工具元信息"""
+        from . import __version__
+
         groups = self.list_groups()
         total_vars = len(self._env_vars)
         secret_count = sum(
@@ -519,7 +521,7 @@ class EnvironmentManager(IOMixin, GroupMixin, HistoryMixin, SchemaMixin):
         )
 
         return {
-            'version': '2.3.0',
+            'version': __version__,
             'author': 'EVM Tool',
             'license': 'MIT',
             'python': sys.version.split()[0],

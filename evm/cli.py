@@ -28,6 +28,7 @@ import os
 import sys
 from typing import Optional
 
+from . import __version__
 from ._completion import (
     SHELL_GENERATORS,
     install_integration,
@@ -98,7 +99,7 @@ ALL_COMMANDS = [
     'search', 'rename', 'copy',
     'exec', 'loadmemory', 'inject',
     'edit', 'info', 'diff', 'expand',
-    'validate', 'history', 'schema', 'completion', 'init',
+    'validate', 'history', 'schema', 'completion', 'init', 'upgrade',
 ]
 
 
@@ -169,7 +170,10 @@ Exit Codes:
         """,
     )
 
-    parser.add_argument('--version', action='version', version='%(prog)s 2.3.0')
+    parser.add_argument(
+        '--version', action='version',
+        version=f'%(prog)s {__version__}',
+    )
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Show detailed version information')
     parser.add_argument('--env-file',
@@ -416,6 +420,17 @@ Exit Codes:
         help='Report whether integration is installed (exit 0=yes, 1=no)',
     )
 
+    # upgrade: 检查并升级到 PyPI 上的最新版本
+    up_p = _sp(
+        'upgrade',
+        help='Check for and install the latest evm version from PyPI',
+    )
+    up_p.add_argument(
+        '--check', action='store_true',
+        help='Only check for updates; report and exit '
+             '(0=up-to-date, 1=update available)',
+    )
+
     return parser
 
 
@@ -456,8 +471,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         parser.print_help()
         return 0
 
-    # 自动安装 shell 集成（跳过 init/completion 自身，避免递归/噪声）
-    if args.command not in ('init', 'completion'):
+    # 自动安装 shell 集成（跳过 init/completion/upgrade 自身，避免递归/噪声）
+    if args.command not in ('init', 'completion', 'upgrade'):
         _ensure_shell_integration(quiet)
 
     dry_run = getattr(args, 'dry_run', False)
@@ -1004,6 +1019,72 @@ def _cmd_init(mgr, args, dry_run, force, json_mode, quiet):
     return 0
 
 
+def _cmd_upgrade(mgr, args, dry_run, force, json_mode, quiet):
+    """处理 upgrade 命令 —— 检查并升级到最新版本
+
+    - `evm upgrade`          检查并在有新版本时通过 pip 升级
+    - `evm upgrade --check`  仅检查，不升级（0=已最新，1=有更新）
+    - `--dry-run`           预览将要执行的 pip 命令
+    - `--force`             跳过预检查，直接运行 pip
+    """
+    from . import _upgrade
+
+    current = _upgrade.get_current_version()
+
+    if getattr(args, 'check', False):
+        latest, available = _upgrade.check_for_update()
+        if available is None:
+            msg = (
+                'Unable to check latest version '
+                '(network unreachable or PyPI error).'
+            )
+            if json_mode:
+                json_error(msg, 1, quiet)
+            elif not quiet:
+                print(f"Current version: {current}")
+                print("Latest version:  unknown (unable to reach PyPI)")
+            return 1
+        if json_mode:
+            json_output(
+                {
+                    'current': current,
+                    'latest': latest,
+                    'update_available': available,
+                },
+                quiet,
+            )
+        elif not quiet:
+            print(f"Current version: {current}")
+            print(f"Latest version:  {latest}")
+            if available:
+                print("Update available!  Run `evm upgrade` to install.")
+            else:
+                print("Already up to date.")
+        return 0 if not available else 1
+
+    action, msg, new_ver = _upgrade.perform_upgrade(
+        force=force, dry_run=dry_run
+    )
+    ok = action in ('upgraded', 'already_latest', 'dry_run')
+    if json_mode:
+        if ok:
+            json_output(
+                {
+                    'current': current,
+                    'new_version': new_ver,
+                    'action': action,
+                    'upgraded': action == 'upgraded',
+                    'message': msg,
+                },
+                quiet,
+            )
+        else:
+            json_error(msg, 1, quiet)
+    elif not quiet:
+        print(msg)
+    return 0 if ok else 1
+
+
 def _ensure_shell_integration(quiet: bool) -> None:
     """在任意 evm 命令启动时检查并自动安装 shell 集成。
 
@@ -1066,6 +1147,7 @@ COMMAND_HANDLERS = {
     'schema': _cmd_schema,
     'completion': _cmd_completion,
     'init': _cmd_init,
+    'upgrade': _cmd_upgrade,
 }
 
 

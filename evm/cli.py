@@ -148,6 +148,18 @@ Group Management:
   evm groups
   evm delete-group dev
 
+Shell Integration (load vars into current shell):
+  evm init                         # Install evm-load + completion into your rc
+  # After restarting your shell, evm-load is available:
+  evm-load                         # = eval "$(evm inject)" — inject all vars
+  evm-load --env-file ./proj.json  # From a project-specific file
+  evm-load --group prod            # Only a group (group: prefix stripped)
+  evm-load --include-secrets       # Also decrypt and inject secrets
+  evm-load --prefix EVM_           # Namespace all keys to avoid collisions
+  # evm-load is a shell function installed by `evm init`; it wraps
+  # `eval "$(evm inject)"` and handles --env-file flag positioning for you.
+  # `evm inject` is the underlying command for use without shell integration.
+
 Options:
   --json     Output structured JSON to stdout (agent-friendly)
   --quiet    Suppress all human-readable output

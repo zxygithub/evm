@@ -1,6 +1,6 @@
 ---
 name: evm-agent
-version: 2.6.1
+version: 2.6.2
 description: Environment Variable Manager (EVM) CLI skill for AI agents. Use this skill whenever you need to manage environment variables, handle .env files, store/retrieve secrets, set up multi-environment configurations (dev/staging/prod), validate configuration values against schemas, run commands with specific environment contexts, or perform any task involving environment variable management. This includes scenarios like setting up environment configs, importing/exporting .env files, managing encrypted credentials, running applications with injected environment variables, backing up configurations, or automating environment variable workflows. Trigger this skill even if the user doesn't explicitly mention "EVM" — any environment variable, .env, or configuration management task should activate it.
 ---
 

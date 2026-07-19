@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.2] - 2026-07-19
+
+### `evm --help` gains a Shell Integration section
+
+The `evm --help` epilog now documents `evm-load` (the shell function installed by `evm init`) and its relationship to `eval "$(evm inject)"`, so users discovering `evm` for the first time land on the recommended shell-integration path instead of the lower-level `inject` command. No CLI behavior change — `evm inject` and all other commands work exactly as before; only the help text is extended.
+
+#### CLI changes
+- **`evm/cli.py`** (epilog) — new `Shell Integration (load vars into current shell)` section between `Group Management` and `Options`. Documents `evm init`, `evm-load` (with all flags: `--env-file` / `--group` / `--include-secrets` / `--prefix`), and notes that `evm-load` wraps `eval "$(evm inject)"` to handle `--env-file` flag positioning. `evm inject` remains available as the underlying command for use without shell integration.
+
+#### Verification
+```
+$ python -m pytest tests/ -q
+696 passed in 5.10s
+
+$ ruff check evm/ tests/
+All checks passed!
+
+$ mypy evm/
+Success: no issues found in 15 source files
+
+$ python -m evm --version
+evm 2.6.2
+```
+
+---
+
 ## [2.6.1] - 2026-07-19
 
 ### Skill documentation sync — no CLI behavior change

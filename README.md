@@ -2,7 +2,7 @@
 
 A powerful command-line tool for managing environment variables on macOS and Linux systems.
 
-**Version**: 2.6.1
+**Version**: 2.6.2
 
 ## Features
 

@@ -3,7 +3,7 @@ EVM - Environment Variable Manager
 A command-line tool for managing environment variables.
 """
 
-__version__ = "2.6.1"
+__version__ = "2.6.2"
 __author__ = "EVM Tool"
 
 from .exceptions import (

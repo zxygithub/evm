@@ -153,6 +153,25 @@ exit_code = mgr.execute(["python", "app.py"])
 # Returns: child process exit code
 ```
 
+### Shell Injection
+
+```python
+# Generate shell-sourceable exports (for `eval "$(evm inject)"`)
+result = mgr.inject(shell="zsh")
+# Returns: {"shell": "zsh", "count": 5, "variables": ["API_KEY", ...],
+#           "skipped": ["dev:DB_URL"], "output": "export API_KEY='...'\n..."}
+
+result = mgr.inject(shell="bash", group="prod")          # strip group prefix
+result = mgr.inject(shell="zsh", include_secrets=True)   # decrypt + inject secrets
+result = mgr.inject(shell="bash", prefix="EVM_")         # namespace all keys
+
+# In a shell script this is consumed via eval:
+#   eval "$(evm inject --group prod)"
+# `inject()` only *generates* the export text — it cannot modify the parent
+# shell's environment (no child process can). The CLI's `eval` wrapper is what
+# actually loads the vars.
+```
+
 ### History
 
 ```python
@@ -169,7 +188,7 @@ mgr.clear_history()
 ```python
 info = mgr.info()
 # Returns: {
-#     "version": "2.0.0",
+#     "version": "2.6.0",   # derived from evm.__version__
 #     "storage_path": "/path/to/env.json",
 #     "total_variables": 10,
 #     "total_groups": 3,

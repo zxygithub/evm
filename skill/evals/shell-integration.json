@@ -1,0 +1,39 @@
+{
+  "name": "shell-integration",
+  "description": "Load EVM variables into the current shell and manage shell integration",
+  "scenario": "A user needs EVM variables available in their interactive shell session — not just inside an `evm exec` child process. Demonstrate loading variables via `evm inject` with `eval`, the `evm-load` shortcut, group-targeted injection, secret handling, and key namespacing. Also show how to install/check shell integration with `evm init` and how to silence the first-run auto-install notice in automation.",
+  "success_criteria": [
+    "Uses `eval \"$(evm inject)\"` to load variables into the current shell (not loadmemory)",
+    "Explains that a child process cannot modify the parent shell — inject+eval is the only mechanism",
+    "Demonstrates `evm-load` as the shortcut for `eval \"$(evm inject)\"`",
+    "Uses `--group` to inject a specific group (strips the group: prefix)",
+    "Notes that grouped vars are skipped by default (invalid shell identifier)",
+    "Makes a deliberate decision about `--include-secrets` (decrypt+inject vs skip to avoid leaking ciphertext)",
+    "Uses `--prefix` to namespace keys when collisions are a concern",
+    "Demonstrates `evm init <shell> --install` and/or `--check` (exit 0/1)",
+    "Mentions `EVM_NO_AUTO_INSTALL=1` to silence the first-run notice in automation",
+    "Uses `--dry-run` to preview injection without eval-ing",
+    "Uses `--json` where appropriate for verification"
+  ],
+  "expected_commands": [
+    "evm --env-file config.json inject --dry-run",
+    "eval \"$(evm --env-file config.json inject)\"",
+    "eval \"$(evm --env-file config.json inject --group prod)\"",
+    "eval \"$(evm --env-file config.json inject --include-secrets)\"",
+    "eval \"$(evm --env-file config.json inject --prefix EVM_)\"",
+    "evm --env-file config.json inject --json",
+    "evm init zsh --install",
+    "evm init zsh --check   # exit 0 = installed, 1 = not",
+    "evm-load --env-file config.json --group prod",
+    "EVM_NO_AUTO_INSTALL=1 evm --env-file config.json list --json"
+  ],
+  "anti_patterns": [
+    "Using `evm loadmemory` expecting variables to appear in the parent interactive shell (it only affects the evm process)",
+    "Treating grouped variables as directly injectable without `--group` (they're skipped — invalid shell identifier)",
+    "Using `--include-secrets` without warning about scrollback/terminal exposure",
+    "Forgetting to quote the `eval \"$(...)\"` (breaks on values with spaces)",
+    "Not mentioning that `inject`/`init`/`completion`/`upgrade` skip auto-install"
+  ],
+  "difficulty": "hard",
+  "estimated_time": "10-15 minutes"
+}

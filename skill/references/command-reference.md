@@ -168,3 +168,46 @@ Validate variables against schema (same as `evm validate`).
 Generate shell completion script.
 - Supports: `bash`, `zsh`, `fish`
 - This command ignores `--json` (outputs raw shell script)
+- The script also defines an `evm-load` shell function (a shortcut for `eval "$(evm inject)"`)
+
+## Shell Integration
+
+### `evm inject`
+Print shell-sourceable `export` statements to stdout. Wrap in `eval "$(evm inject)"` to load variables into the **current** shell — the only mechanism that works, since a child process cannot modify its parent's environment.
+- `--shell` / `-s bash|zsh|sh|fish`: Target shell (auto-detected from `$SHELL`; fish uses `set -gx KEY VALUE`)
+- `--group` / `-g GROUP`: Inject only this group (strips the `group:` prefix)
+- `--include-secrets`: Decrypt and inject secret variables (skipped by default to avoid leaking ciphertext)
+- `--prefix PREFIX`: Namespace all exported keys (e.g. `EVM_`) to avoid collisions
+- Plain (non-grouped) variables are exported by default; grouped vars are skipped unless `--group` is given
+- Values are escaped with `shlex.quote` (spaces, quotes, `$` all handled)
+- JSON output: `{"shell": "...", "count": N, "variables": [...], "skipped": [...], "output": "..."}`
+- `--dry-run`: Preview what would be injected (human-readable, not eval-able)
+
+```bash
+eval "$(evm inject)"                  # load all plain vars
+eval "$(evm inject --group prod)"     # load only the prod group
+eval "$(evm inject --include-secrets)" # also decrypt and inject secrets
+```
+
+### `evm init [SHELL]`
+Output the shell-integration script (for `eval "$(evm init zsh)"` in your rc), or manage rc-file installation. The integration block re-evaluates `evm init` on every shell start, so `evm-load` and tab completion stay in sync with the installed evm version automatically.
+- `SHELL`: `bash` / `zsh` / `fish` (default: detect from `$SHELL`)
+- `--install`: Append the integration block to the shell rc file (`~/.zshrc` / `~/.bashrc` / `~/.config/fish/config.fish`)
+- `--uninstall`: Remove the integration block (line-level deletion, preserves surrounding content)
+- `--reinstall`: Remove then re-add (useful if rc got out of sync)
+- `--check`: Report whether installed (exit 0 = installed, 1 = not installed)
+- JSON output: `{"shell": "...", "installed": bool}` (for `--check`); `{"shell": "...", "message": "...", "ok": bool}` (for install/uninstall/reinstall)
+
+**Auto-install on first use**: the first time you run any `evm` command (except `init`/`completion`/`upgrade` themselves), EVM appends the integration block to your rc and prints a notice to stderr. Set `EVM_NO_AUTO_INSTALL=1` to skip.
+
+## Self-Upgrade
+
+### `evm upgrade`
+Check PyPI for a newer `evm` release and pip-install it. Pure standard-library implementation (urllib + subprocess), no new dependencies.
+- `--check`: Only check, don't install. Exit 0 = up to date, 1 = update available (or network error)
+- `--dry-run`: Print the pip command that would run, without executing it
+- `--force`: Skip the pre-check and run pip directly
+- Runs `pip install --upgrade evm-cli` with the **same Python interpreter** that runs `evm` (so the correct installation is upgraded)
+- JSON output (`--check`): `{"current": "...", "latest": "...", "update_available": bool}`
+- JSON output (upgrade): `{"current": "...", "new_version": "...", "action": "upgraded|already_latest|dry_run|failed|network_error", "upgraded": bool, "message": "..."}`
+- Network-unreachable is handled gracefully: `--check` reports `latest: unknown` and exits 1; a plain `evm upgrade` aborts before touching pip

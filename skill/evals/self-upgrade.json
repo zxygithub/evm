@@ -1,0 +1,33 @@
+{
+  "name": "self-upgrade",
+  "description": "Check for and install the latest evm version from PyPI",
+  "scenario": "A user wants to check whether a newer evm release is available on PyPI and upgrade if so. Demonstrate the check-only path (no changes), the dry-run preview, and the actual upgrade. Show how to branch on exit codes (1 = update available, NOT an error), handle network-unreachable gracefully, and use --json for scripting.",
+  "success_criteria": [
+    "Uses `evm upgrade --check` to check without installing",
+    "Correctly interprets exit 1 from `--check` as 'update available' (not a failure)",
+    "Correctly interprets exit 0 from `--check` as 'already up to date'",
+    "Uses `--dry-run` to preview the pip command before a real upgrade",
+    "Handles network-unreachable (latest reported as unknown, exit 1) gracefully rather than failing loudly",
+    "Uses `--json` for programmatic consumption of current/latest/update_available",
+    "Explains that `evm upgrade` runs `pip install --upgrade evm-cli` with the current interpreter",
+    "Notes that `evm upgrade` does not trigger shell-integration auto-install",
+    "Does NOT treat `--check` exit 1 as an error to suppress or panic about"
+  ],
+  "expected_commands": [
+    "evm upgrade --check",
+    "evm upgrade --check --json",
+    "evm upgrade --dry-run",
+    "evm upgrade",
+    "evm upgrade --force",
+    "if evm upgrade --check; then echo \"up to date\"; else echo \"update available\"; fi"
+  ],
+  "anti_patterns": [
+    "Treating `evm upgrade --check` exit 1 as an error (it means 'update available')",
+    "Running `evm upgrade` directly in automation without `--check`/`--dry-run` first",
+    "Assuming the upgrade can set variables in the parent shell (unrelated, but a common confusion)",
+    "Ignoring network-unreachable as a recoverable case",
+    "Forgetting that `upgrade` skips auto-install (no need to set EVM_NO_AUTO_INSTALL)"
+  ],
+  "difficulty": "medium",
+  "estimated_time": "5-10 minutes"
+}

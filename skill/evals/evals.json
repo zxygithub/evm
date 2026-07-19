@@ -30,6 +30,18 @@
       "prompt": "I'm setting up a CI/CD pipeline and need to manage environment variables programmatically. Show me how to use EVM's Python API to: create a fresh config, import from a JSON file, validate all variables against schemas, and handle errors gracefully with specific exception types.",
       "expected_output": "Agent should provide Python code using EnvironmentManager with proper exception handling (KeyNotFoundError, ImportFailedError, SchemaError, etc.). Should demonstrate the full Python API workflow.",
       "files": []
+    },
+    {
+      "id": 6,
+      "prompt": "I have EVM variables stored in an env file and I need them available in my current interactive shell session so my scripts and tools can read them directly — not just inside `evm exec`. How do I load them in? Also, I keep getting a 'Installed evm shell integration' message on stderr when I run evm in automation — how do I suppress that?",
+      "expected_output": "Agent should use `eval \"$(evm inject)\"` (NOT loadmemory, which only affects the evm process). Should explain a child process cannot modify the parent shell. Should show --group for group-targeted injection, --include-secrets for secrets, --prefix for namespacing. Should mention evm-load as a shortcut, and EVM_NO_AUTO_INSTALL=1 to silence the first-run notice. Should reference evm init --install/--check for persistent setup.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "prompt": "I want to make sure I'm running the latest version of evm and upgrade if a newer release exists. How do I check first without changing anything, then upgrade? I'm scripting this so I need clean exit codes and JSON output.",
+      "expected_output": "Agent should use `evm upgrade --check` (exit 0 = up to date, 1 = update available — NOT an error), then `evm upgrade --dry-run` to preview, then `evm upgrade` to install. Should use --json for scripting. Should handle network-unreachable gracefully (latest reported as unknown). Must NOT treat --check exit 1 as a failure to panic about.",
+      "files": []
     }
   ]
 }

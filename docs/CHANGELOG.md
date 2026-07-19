@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2026-07-19
+
+### Skill documentation sync — no CLI behavior change
+
+The bundled `evm-agent` skill (`skill/`) was stale at `version: 2.1.0` while the CLI had advanced to 2.6.0. Two entire feature releases (`evm inject`/`evm init` from v2.5.0, `evm upgrade` from v2.6.0) were entirely undocumented in the skill. This release syncs the skill to v2.6.1. **No CLI code or behavior changes** — `evm/__init__.py` version bump only (to keep the tag consistent with `__version__`, per the v2.6.0 consistency fix).
+
+#### Skill changes (`skill/`)
+- **`SKILL.md`** — frontmatter `2.1.0` → `2.6.1`; new Core Principle 6 (`EVM_NO_AUTO_INSTALL=1` to silence first-run auto-install in automation); three new workflows (Load Variables into Current Shell via `evm inject`+`eval`, Shell Integration Setup via `evm init`/`evm-load`, Self-Upgrade via `evm upgrade`); `inject()` Python example; corrected the misleading `loadmemory` framing (it only affects the evm process — `inject` is the shell mechanism); Architecture module list completed (`_completion.py`/`_upgrade.py`/`_json.py`/`_typing.py`/`formatters.py`).
+- **`references/command-reference.md`** — added full entries for `evm inject`, `evm init`, `evm upgrade` (previously missing entirely).
+- **`references/python-api.md`** — added `Shell Injection` section documenting `manager.inject()`; fixed stale `"version": "2.0.0"` in the `info()` example.
+- **`references/exit-codes.md`** — new `Status-Check Convention (--check)` section documenting the 0/1 exit semantics shared by `evm init --check` and `evm upgrade --check` (exit 1 = action needed, not an error; `--json` still emits `status:ok`).
+- **`evals/shell-integration.json`** *(new)* — eval for inject/eval, evm-load, `--group`/`--include-secrets`/`--prefix`, `evm init --install/--check`, `EVM_NO_AUTO_INSTALL`, with anti-patterns (misusing `loadmemory` for parent-shell injection).
+- **`evals/self-upgrade.json`** *(new)* — eval for `--check` exit semantics, `--dry-run`, network-unreachable degradation, `--json`, with anti-patterns (treating `--check` exit 1 as an error).
+- **`evals/evals.json`** — registered the two new evals (id 6, id 7).
+
+#### Verification
+```
+$ python -m pytest tests/ -q
+696 passed in 3.24s
+
+$ ruff check evm/ tests/
+All checks passed!
+
+$ mypy evm/
+Success: no issues found in 15 source files
+
+$ python -m evm --version
+evm 2.6.1
+```
+(The 3 JSON eval files validate as valid JSON; `evm inject`/`init`/`upgrade`/`EVM_NO_AUTO_INSTALL`/`evm-load` now appear 64× across the skill, vs. 0× before.)
+
+---
+
 ## [2.6.0] - 2026-07-19
 
 ### New: `evm upgrade` — Self-upgrade from PyPI

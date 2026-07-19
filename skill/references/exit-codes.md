@@ -98,3 +98,23 @@ if [ $rc -ne 0 ]; then
     echo "EVM error ($rc): $error_msg"
 fi
 ```
+
+## Status-Check Convention (`--check`)
+
+Two commands use a `--check` flag that reports state **without making changes**, with a binary exit code:
+
+| Command | Exit 0 | Exit 1 |
+|---------|--------|--------|
+| `evm init SHELL --check` | shell integration installed | not installed |
+| `evm upgrade --check` | already up to date | update available (or network unreachable) |
+
+Note that exit 1 here is **not an error** — the `--check` succeeded; the code signals "action needed". This mirrors `grep`'s "found / not found" convention. In `--json` mode these still emit `{"status": "ok", ...}` on stdout even when the exit code is 1.
+
+```bash
+# Branch on whether an upgrade is available
+if evm upgrade --check; then
+    echo "Already on the latest evm"
+else
+    echo "Newer evm available — run: evm upgrade"
+fi
+```

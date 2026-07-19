@@ -1,6 +1,6 @@
 ---
 name: evm-agent
-version: 2.1.0
+version: 2.6.1
 description: Environment Variable Manager (EVM) CLI skill for AI agents. Use this skill whenever you need to manage environment variables, handle .env files, store/retrieve secrets, set up multi-environment configurations (dev/staging/prod), validate configuration values against schemas, run commands with specific environment contexts, or perform any task involving environment variable management. This includes scenarios like setting up environment configs, importing/exporting .env files, managing encrypted credentials, running applications with injected environment variables, backing up configurations, or automating environment variable workflows. Trigger this skill even if the user doesn't explicitly mention "EVM" — any environment variable, .env, or configuration management task should activate it.
 ---
 
@@ -88,6 +88,18 @@ echo $?  # 0 = success
 # JSON-only mode
 evm --json --quiet list
 ```
+
+### 6. Silence the First-Run Shell-Integration Notice
+
+On the **first** `evm` command a user runs, EVM auto-installs a shell-integration block into their rc file (`~/.zshrc` etc.) and prints a notice to stderr. This is harmless and idempotent, but in automation/agent contexts you usually want clean stderr. Set `EVM_NO_AUTO_INSTALL=1` to skip it entirely:
+
+```bash
+export EVM_NO_AUTO_INSTALL=1   # in the agent's environment
+# or per-command:
+EVM_NO_AUTO_INSTALL=1 evm --env-file config.json list --json
+```
+
+The `init`, `completion`, and `upgrade` commands never trigger auto-install.
 
 ## Exit Codes
 
@@ -240,6 +252,80 @@ evm --env-file config.json history --json
 evm --env-file config.json history --clear
 ```
 
+### Load Variables into the Current Shell
+
+A child process **cannot** modify its parent shell's environment, so `evm loadmemory` only affects the `evm` process itself (useless for an interactive shell). To actually load EVM variables into the current shell, use `evm inject` wrapped in `eval`:
+
+```bash
+# Load all plain (non-grouped) variables into the current shell
+eval "$(evm --env-file config.json inject)"
+echo "$API_KEY"   # now set in the current shell
+
+# Load only a specific group (strips the group: prefix)
+eval "$(evm --env-file config.json inject --group prod)"
+
+# Also decrypt and inject secret variables
+eval "$(evm --env-file config.json inject --include-secrets)"
+
+# Namespace all keys to avoid collisions with existing env vars
+eval "$(evm --env-file config.json inject --prefix EVM_)"
+
+# Preview without eval-ing (human-readable)
+evm --env-file config.json inject --dry-run
+
+# Structured output (count, variables, skipped, output) for scripting
+evm --env-file config.json inject --json
+```
+
+`--shell` defaults to the value detected from `$SHELL`; fish uses `set -gx KEY VALUE` instead of `export`. Grouped variables (e.g. `dev:DB_URL`) are **skipped by default** (invalid shell identifier) — use `--group dev` to strip the prefix and export them.
+
+### Shell Integration Setup (`evm init` / `evm-load`)
+
+Install `evm-load` (a shortcut for `eval "$(evm inject)"` that handles `--env-file` positioning) plus tab completion into the shell rc:
+
+```bash
+# Auto path: just use evm normally — first run installs the rc block.
+# Manual control:
+evm init zsh --install      # append integration block to ~/.zshrc
+evm init zsh --check        # exit 0 = installed, 1 = not
+evm init zsh --uninstall    # remove the block (preserves surrounding content)
+evm init zsh --reinstall    # force re-add (useful if rc got out of sync)
+
+# The block re-runs `evm init` on every shell start, so evm-load + completion
+# stay in sync with the installed evm version automatically.
+
+# After install, in the shell:
+evm-load                           # ≡ eval "$(evm inject)"
+evm-load --env-file config.json    # with project-specific storage
+evm-load --group prod
+```
+
+Opt out of auto-install with `EVM_NO_AUTO_INSTALL=1` (see Core Principle 6).
+
+### Self-Upgrade (`evm upgrade`)
+
+Check PyPI for a newer `evm` release and pip-install it in one step (pure stdlib, no new dependencies):
+
+```bash
+# Check only — no changes (exit 0 = up to date, 1 = update available)
+evm upgrade --check
+
+# Actually upgrade (runs `pip install --upgrade evm-cli` with the current interpreter)
+evm upgrade
+
+# Preview the pip command without running it
+evm upgrade --dry-run
+
+# Skip the pre-check and run pip directly
+evm upgrade --force
+
+# Structured JSON output
+evm upgrade --check --json
+# {"status": "ok", "data": {"current": "2.6.0", "latest": "2.7.0", "update_available": true}}
+```
+
+If the network is unreachable, `--check` reports `latest: unknown` and exits 1; a plain `evm upgrade` aborts before touching pip.
+
 ## Python API Usage
 
 EVM can also be used as a Python library:
@@ -278,6 +364,11 @@ mgr.list_groups()  # {"dev": 1}
 mgr.set("HOST", "localhost")
 mgr.set("URL", "http://{{HOST}}:3000")
 mgr.expand("URL")  # "http://localhost:3000"
+
+# Shell injection — generate export text (consume via `eval` in a shell)
+result = mgr.inject(shell="zsh", group="prod")
+# {"shell": "zsh", "count": 3, "variables": [...], "skipped": [...], "output": "export ..."}
+# inject() only *generates* text; it cannot set vars in the parent shell itself.
 ```
 
 ## Error Handling Patterns
@@ -334,12 +425,17 @@ except SchemaError as e:
 
 **Module Organization**:
 - `cli.py`: CLI parsing and command dispatch
-- `manager.py`: Core business logic (CRUD, templates, execution)
+- `manager.py`: Core business logic (CRUD, templates, execution, inject)
 - `_io.py`: Import/export/backup/restore (IOMixin)
 - `_groups.py`: Namespace/group management (GroupMixin)
 - `_history.py`: Operation logging (HistoryMixin)
 - `_schema.py`: Validation schemas (SchemaMixin)
 - `_crypto.py`: HKDF + HMAC-CTR encryption
+- `_completion.py`: Shell completion generators + rc-file integration (`evm init`/`evm-load`)
+- `_upgrade.py`: PyPI version check + pip self-upgrade (`evm upgrade`)
+- `_json.py`: JSON output helpers (`json_output`/`json_error`)
+- `_typing.py`: Shared typing helpers (Protocol mixin base)
+- `formatters.py`: Terminal output formatting
 - `exceptions.py`: Exception hierarchy
 
 When debugging issues, check the relevant module based on the operation type.
